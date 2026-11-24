@@ -619,7 +619,7 @@ async function planejar(rows, mapa, opts = {}) {
       if (t.status === 'inutil') telInuteis++;
       telefones.push({ lojista_id: rec.id, numero, numero_original: t.original, status: t.status });
     }
-    if (!vinculos.has(rec.id) && (vincularExistentes || rec._novo)) vinculos.set(rec.id, { lojista_id: rec.id, ordem: g.ordem, dados: g.bruto });
+    if (!vinculos.has(rec.id) && (vincularExistentes || rec._novo)) vinculos.set(rec.id, { lojista_id: rec.id, ordem: g.ordem });
   }
   // só grava quem é novo ou ganhou alguma informação (evita reescrever o banco à toa)
   const todos = [...recs.values()];
