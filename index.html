@@ -535,6 +535,8 @@ $('#iAnalisar').onclick = async () => {
 // Agrupa as linhas de qualquer planilha em lojistas, cruza com o banco e devolve o plano de gravação.
 //   opts.baseId: base de destino (prefere lojistas dela quando um telefone é compartilhado)
 //   opts.vincularExistentes: false = só os lojistas novos entram na base (usado nos arquivos de disparo)
+const CAMPOS_LOJ = ['documento','tipo_doc','doc_original','nome','codigo_cliente','contato','email','data_cadastro','ultima_compra','situacao','vendedor'];
+const assinatura = l => JSON.stringify([...CAMPOS_LOJ.map(k => l[k] ?? null), Object.entries(l.extras || {}).sort()]);
 async function planejar(rows, mapa, opts = {}) {
   const vincularExistentes = opts.vincularExistentes !== false;
   const regs = rows.map((r, i) => ({ ...CL.linha(r, mapa), ordem: i + 1, bruto: r }));
@@ -600,7 +602,7 @@ async function planejar(rows, mapa, opts = {}) {
     }
     let rec = id ? recs.get(id) : null;          // mesmo lojista já visto nesta planilha: une
     if (!rec) {
-      if (id) { rec = { ...exist.get(id) }; atualizados++; }
+      if (id) { rec = { ...exist.get(id) }; rec._antes = assinatura(rec); atualizados++; }
       else { rec = { id: crypto.randomUUID(), extras: {}, created_at: agora, _novo: true }; novos++; }
       recs.set(rec.id, rec);
     }
@@ -610,28 +612,31 @@ async function planejar(rows, mapa, opts = {}) {
     for (const [k, v] of Object.entries(g.campos)) if (!rec[k]) rec[k] = v;
     rec.extras = { ...(rec.extras || {}) };
     for (const [k, v] of Object.entries(g.extras)) if (!rec.extras[k]) rec.extras[k] = v;
-    rec.updated_at = agora;
     for (const t of g.telefones) {
       const numero = numeroDe(t), chave = rec.id + '|' + numero;
       if (telVistos.has(chave)) continue; telVistos.add(chave);
+      if ((telMap.get(numero) || new Set()).has(rec.id)) continue; // já está gravado
       if (t.status === 'inutil') telInuteis++;
       telefones.push({ lojista_id: rec.id, numero, numero_original: t.original, status: t.status });
     }
     if (!vinculos.has(rec.id) && (vincularExistentes || rec._novo)) vinculos.set(rec.id, { lojista_id: rec.id, ordem: g.ordem, dados: g.bruto });
   }
-  const lojistas = [...recs.values()].map(({ _novo, ...l }) => l);
+  // só grava quem é novo ou ganhou alguma informação (evita reescrever o banco à toa)
+  const todos = [...recs.values()];
+  const lojistas = todos.filter(l => l._novo || l._antes !== assinatura(l)).map(({ _novo, _antes, ...l }) => ({ ...l, updated_at: agora }));
   const linhaId = regs.map(r => (r.g ? r.g.recId : null));
   const linhaTel = regs.map(r => ((r.telefones.find(t => t.status === 'valido') || {}).numero || null));
   const comUtil = new Set(telefones.filter(t => t.status === 'valido').map(t => t.lojista_id));
+  const telJaUtil = new Set(grupos.filter(g => g.telefones.some(t => t.status === 'valido')).map(g => g.recId));
   return { linhas: rows.length, lojistas, telefones, vinculos: [...vinculos.values()], linhaId, linhaTel, novos, atualizados, ignorados, telInuteis,
-           semDoc: lojistas.filter(l => !l.documento).length, semTelUtil: lojistas.filter(l => !comUtil.has(l.id)).length };
+           unicos: todos.length, semDoc: todos.filter(l => !l.documento).length, semTelUtil: todos.filter(l => !comUtil.has(l.id) && !telJaUtil.has(l.id)).length };
 }
 function mostrarPlano() {
   const p = IMP.plano;
   $('#iResumo').innerHTML = `<h3 style="margin-top:22px">Resultado da análise</h3>
     <div class="stats">
       <div class="stat"><b>${fmt(p.linhas)}</b><small>linhas na planilha</small></div>
-      <div class="stat"><b>${fmt(p.lojistas.length)}</b><small>lojistas únicos</small></div>
+      <div class="stat"><b>${fmt(p.unicos)}</b><small>lojistas únicos</small></div>
       <div class="stat"><b style="color:var(--ok)">${fmt(p.novos)}</b><small>novos na central</small></div>
       <div class="stat"><b style="color:var(--acc)">${fmt(p.atualizados)}</b><small>já existiam (serão completados)</small></div>
       <div class="stat"><b>${fmt(p.semDoc)}</b><small>sem CPF/CNPJ</small></div>
@@ -667,7 +672,7 @@ async function gravar() {
 async function gravarPlano(p, baseId, passo = () => {}) {
   for (const c of chunk(p.lojistas, LOTE)) { await q(sb.from('cl_lojistas').upsert(c, { onConflict: 'id' })); passo(c.length, 'Gravando lojistas…'); }
   for (const c of chunk(p.telefones, LOTE)) { await q(sb.from('cl_telefones').upsert(c, { onConflict: 'lojista_id,numero', ignoreDuplicates: true })); passo(c.length, 'Gravando telefones…'); }
-  for (const c of chunk(p.vinculos.map(v => ({ ...v, base_id: baseId })), LOTE)) { await q(sb.from('cl_lojista_base').upsert(c, { onConflict: 'lojista_id,base_id' })); passo(c.length, 'Vinculando à base…'); }
+  for (const c of chunk(p.vinculos.map(v => ({ ...v, base_id: baseId })), LOTE)) { await q(sb.from('cl_lojista_base').upsert(c, { onConflict: 'lojista_id,base_id', ignoreDuplicates: true })); passo(c.length, 'Vinculando à base…'); }
   await q(sb.rpc('cl_recalcular_rodadas', { p_base: baseId, p_ids: null }));
 }
 async function baseDestino(valor, nomeNova) { // devolve o id, criando a base se for nova
