@@ -1,0 +1,964 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Central de Leads · Avacy</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+:root{
+  --bg:#0f1115;--panel:#171a21;--panel2:#1e222b;--line:#2a2f3a;--txt:#e6e8ec;--muted:#8b93a3;
+  --acc:#4f8cff;--acc2:#3b6fd6;--ok:#2fbf71;--warn:#f0a43a;--bad:#e5534b;--r1:#2fbf71;--r2:#4f8cff;--r3:#a970ff;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{display:flex;align-items:center;gap:24px;padding:14px 24px;border-bottom:1px solid var(--line);background:var(--panel);position:sticky;top:0;z-index:5;flex-wrap:wrap}
+header h1{font-size:17px;margin:0;font-weight:650;letter-spacing:.2px}
+header h1 span{color:var(--acc)}
+.kpis{display:flex;gap:18px;flex-wrap:wrap;margin-left:auto}
+.kpi{font-size:12px;color:var(--muted)}.kpi b{display:block;font-size:16px;color:var(--txt)}
+nav{display:flex;gap:4px;padding:0 24px;border-bottom:1px solid var(--line);background:var(--panel);overflow-x:auto}
+nav button{background:none;border:0;color:var(--muted);padding:12px 14px;font:inherit;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap}
+nav button.on{color:var(--txt);border-bottom-color:var(--acc)}
+main{padding:24px;max-width:1280px;margin:0 auto}
+.tab{display:none}.tab.on{display:block}
+h2{font-size:15px;margin:0 0 4px}h3{font-size:13px;margin:0 0 10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+.sub{color:var(--muted);margin:0 0 18px;font-size:13px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px;margin-bottom:18px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px}
+.base{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:14px;cursor:pointer;transition:.15s}
+.base:hover{border-color:#3a4252}.base.on{border-color:var(--acc);box-shadow:0 0 0 1px var(--acc) inset}
+.base .n{font-weight:650;margin-bottom:2px}.base .t{color:var(--muted);font-size:12px}
+.bar{display:flex;height:8px;border-radius:4px;overflow:hidden;background:#262b35;margin:10px 0 6px}
+.bar i{display:block;height:100%}
+.leg{display:flex;gap:10px;flex-wrap:wrap;font-size:11.5px;color:var(--muted)}
+.leg span::before{content:"";display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:4px;background:var(--c)}
+label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
+input,select{background:#11141a;border:1px solid var(--line);color:var(--txt);border-radius:7px;padding:8px 10px;font:inherit;width:100%}
+input:focus,select:focus{outline:none;border-color:var(--acc)}
+.row{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end}.row>div{flex:1;min-width:150px}.row>.fit{flex:0 0 auto;min-width:0}
+.btn{background:var(--acc);color:#fff;border:0;border-radius:7px;padding:9px 16px;font:inherit;font-weight:600;cursor:pointer;white-space:nowrap}
+.btn:hover{background:var(--acc2)}.btn:disabled{opacity:.45;cursor:default}
+.btn.sec{background:#262b35;color:var(--txt)}.btn.sec:hover{background:#30363f}
+.btn.bad{background:transparent;color:var(--bad);border:1px solid #5a2a27;padding:5px 10px;font-weight:500}
+.seg{display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.seg button{flex:1;background:#11141a;border:0;color:var(--muted);padding:8px 10px;font:inherit;cursor:pointer}
+.seg button.on{background:var(--acc);color:#fff}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;color:var(--muted);font-weight:600;font-size:12px;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:8px 10px;border-bottom:1px solid #22262f;vertical-align:middle}
+tr.click{cursor:pointer}tr.click:hover td{background:#1b1f27}
+.tag{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11.5px;background:#262b35;color:var(--muted)}
+.tag.ok{background:#173a28;color:var(--ok)}.tag.bad{background:#3d1f1d;color:var(--bad)}.tag.acc{background:#1b2c4d;color:var(--acc)}.tag.warn{background:#3d2e15;color:var(--warn)}
+.stats{display:flex;gap:12px;flex-wrap:wrap;margin:14px 0}
+.stat{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px 14px;min-width:120px}
+.stat b{display:block;font-size:18px}.stat small{color:var(--muted)}
+.drop{border:1.5px dashed #3a4252;border-radius:10px;padding:28px;text-align:center;color:var(--muted);cursor:pointer;transition:.15s}
+.drop:hover,.drop.over{border-color:var(--acc);color:var(--txt)}
+.drop input{display:none}
+.map td:first-child{font-weight:600}.map .ex{color:var(--muted);font-size:12px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.prog{height:6px;background:#262b35;border-radius:3px;overflow:hidden;margin:12px 0 4px}.prog i{display:block;height:100%;background:var(--acc);width:0;transition:width .2s}
+.muted{color:var(--muted)}.right{text-align:right}.mono{font-variant-numeric:tabular-nums}td.mono{white-space:nowrap}
+.toast{position:fixed;bottom:22px;right:22px;background:var(--panel2);border:1px solid var(--line);border-left:3px solid var(--acc);padding:12px 16px;border-radius:8px;max-width:380px;box-shadow:0 8px 24px #0008;z-index:50;opacity:0;transform:translateY(8px);transition:.2s;pointer-events:none}
+.toast.show{opacity:1;transform:none}.toast.err{border-left-color:var(--bad)}.toast.ok{border-left-color:var(--ok)}
+.drawer{position:fixed;top:0;right:0;width:min(560px,100%);height:100%;background:var(--panel);border-left:1px solid var(--line);z-index:40;transform:translateX(100%);transition:.2s;overflow-y:auto;padding:22px}
+.drawer.on{transform:none}
+.kv{display:grid;grid-template-columns:140px 1fr;gap:6px 12px;font-size:13px;margin-bottom:18px}.kv div:nth-child(odd){color:var(--muted)}
+.close{float:right;background:none;border:0;color:var(--muted);font-size:20px;cursor:pointer}
+.confirm{display:inline-flex;gap:6px;align-items:center}
+.empty{color:var(--muted);text-align:center;padding:26px}
+.scroll{overflow-x:auto}
+@media(max-width:640px){main{padding:16px}header{padding:12px 16px}nav{padding:0 16px}.kv{grid-template-columns:110px 1fr}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Central de <span>Leads</span></h1>
+  <div class="kpis" id="kpis"></div>
+</header>
+<nav>
+  <button class="on" data-tab="disparo">Disparo</button>
+  <button data-tab="importar">Importar base</button>
+  <button data-tab="lotes">Lotes de disparo</button>
+  <button data-tab="conversas">Conversas</button>
+  <button data-tab="lojistas">Lojistas</button>
+</nav>
+<main>
+
+<!-- ======================= DISPARO ======================= -->
+<section class="tab on" id="tab-disparo">
+  <h2>Bases para disparo</h2>
+  <p class="sub">Escolha a base. A central separa os lojistas da próxima rodada e marca o lote quando você baixa o arquivo.</p>
+  <div class="grid" id="bases"></div>
+  <div class="card" id="painel" style="display:none;margin-top:18px">
+    <h3 id="pTitulo"></h3>
+    <div class="row">
+      <div><label>Rodada</label><select id="pRodada"></select></div>
+      <div><label>Time</label><div class="seg" id="pEquipe"><button class="on">Closer</button><button>Developer</button><button>Farmer</button></div></div>
+      <div style="max-width:130px"><label>Quantidade</label><input id="pQtd" type="number" value="500" min="1"></div>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <div><label>Ordem na planilha</label><div class="seg" id="pOrdem"><button class="on" data-v="1">Do fim para o início</button><button data-v="0">Do início para o fim</button></div></div>
+      <div style="max-width:300px"><label>Pular quem recebeu disparo de qualquer base nos últimos</label><select id="pDias"><option value="0">Não pular</option><option value="7">7 dias</option><option value="15" selected>15 dias</option><option value="30">30 dias</option><option value="60">60 dias</option></select></div>
+      <div class="fit"><button class="btn" id="pGerar">Gerar lote</button></div>
+    </div>
+    <div id="previa"></div>
+  </div>
+</section>
+
+<!-- ======================= IMPORTAR ======================= -->
+<section class="tab" id="tab-importar">
+  <h2>Importar base</h2>
+  <p class="sub">Suba a planilha, diga o que é cada coluna e confirme. Quem já existe é completado, sem duplicar.</p>
+  <div class="card">
+    <label class="drop" id="iDrop"><input type="file" id="iFile" accept=".xlsx,.xls,.csv"><b>Arraste a planilha aqui</b><br>ou clique para escolher (.xlsx, .xls, .csv)</label>
+    <div id="iEtapa2" style="display:none;margin-top:18px">
+      <div class="row">
+        <div><label>Arquivo</label><input id="iNomeArq" disabled></div>
+        <div id="iAbaBox"><label>Aba</label><select id="iAba"></select></div>
+        <div><label>Base de destino</label><select id="iBase"></select></div>
+        <div id="iNovaBaseBox" style="display:none"><label>Nome da nova base</label><input id="iNovaBase" placeholder="Ex.: Churn"></div>
+      </div>
+      <h3 style="margin-top:22px">O que é cada coluna</h3>
+      <div class="scroll"><table class="map"><thead><tr><th>Coluna</th><th>Exemplo</th><th style="width:260px">Campo na central</th></tr></thead><tbody id="iMapa"></tbody></table></div>
+      <div class="row" style="margin-top:16px;justify-content:flex-end"><div class="fit"><button class="btn sec" id="iCancelar">Cancelar</button></div><div class="fit"><button class="btn" id="iAnalisar">Analisar</button></div></div>
+    </div>
+    <div id="iResumo"></div>
+  </div>
+  <div class="card"><h3>Importações anteriores</h3><p class="sub" style="margin:-4px 0 12px">Todas as importações: bases, conversas do HyperFlow e arquivos de disparo.</p><div id="iHist" class="scroll"></div></div>
+</section>
+
+<!-- ======================= LOTES ======================= -->
+<section class="tab" id="tab-lotes">
+  <h2>Lotes de disparo</h2>
+  <p class="sub">Suba os arquivos que você já disparou, confira base, time e data e processe. Eles passam para os lotes importados e marcam a rodada de cada lojista. Quem ainda não está na central é cadastrado na base do disparo.</p>
+  <div class="card">
+    <label class="drop" id="hDrop"><input type="file" id="hFile" accept=".xlsx,.xls,.csv" multiple><b>Arraste os arquivos de disparo</b><br>pode selecionar vários</label>
+    <div id="hLista"></div>
+  </div>
+  <div class="card">
+    <div class="row" style="margin-bottom:12px;align-items:center"><div><h3 style="margin:0">Lotes importados</h3></div><div style="max-width:220px"><select id="lBase"><option value="">Todas as bases</option></select></div></div>
+    <div id="lTabela" class="scroll"></div>
+    <p class="muted" style="font-size:12px;margin:12px 0 0">Respostas = lojistas do lote que mandaram mensagem em até 7 dias após o disparo, pelas conversas importadas do HyperFlow.</p>
+  </div>
+</section>
+
+<!-- ======================= CONVERSAS ======================= -->
+<section class="tab" id="tab-conversas">
+  <h2>Conversas do HyperFlow</h2>
+  <p class="sub">Suba o relatório de protocolos exportado do HyperFlow. A central cadastra os contatos novos, identifica quem respondeu e quantas vezes, e calcula a resposta de cada lote. Pode subir períodos que se repetem: nada duplica.</p>
+  <div class="card">
+    <label class="drop" id="cDrop"><input type="file" id="cFile" accept=".xlsx,.xls"><b>Arraste o relatório do HyperFlow</b><br>o arquivo exportado, com a aba Protocolos</label>
+    <div id="cResumo"></div>
+  </div>
+  <div class="card"><h3>Importações anteriores</h3><div id="cHist" class="scroll"></div></div>
+</section>
+
+<!-- ======================= LOJISTAS ======================= -->
+<section class="tab" id="tab-lojistas">
+  <h2>Lojistas</h2>
+  <p class="sub">Todos os lojistas da central. Combine os filtros ou busque por nome, CPF/CNPJ ou telefone.</p>
+  <div class="card">
+    <div class="row">
+      <div style="flex:2;min-width:220px"><label>Busca</label><input id="fBusca" placeholder="Nome, CPF/CNPJ ou telefone"></div>
+      <div><label>Base</label><select id="fBase"><option value="">Todas</option></select></div>
+      <div><label>Rodada na base</label><select id="fRodada" disabled><option value="">Todas</option></select></div>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <div><label>CPF/CNPJ</label><select id="fDoc"><option value="">Todos</option><option value="com">Com documento</option><option value="sem">Sem documento</option></select></div>
+      <div><label>Telefone</label><select id="fTel"><option value="">Todos</option><option value="com">Com telefone útil</option><option value="sem">Sem telefone útil</option></select></div>
+      <div><label>Conversas</label><select id="fResp"><option value="">Todos</option><option value="respondeu">Já respondeu</option><option value="nao_respondeu">Recebeu, nunca respondeu</option><option value="sem_conversa">Sem conversa</option></select></div>
+      <div class="fit"><button class="btn sec" id="fLimpar">Limpar filtros</button></div>
+    </div>
+    <div id="fRes" class="scroll" style="margin-top:16px"></div>
+    <div id="fPag" class="row" style="margin-top:12px;align-items:center"></div>
+  </div>
+</section>
+</main>
+
+<div class="drawer" id="drawer"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+// ===================== NORMALIZAÇÃO (núcleo testável) =====================
+const CL = (() => {
+  const DDDS = new Set([11,12,13,14,15,16,17,18,19,21,22,24,27,28,31,32,33,34,35,37,38,
+    41,42,43,44,45,46,47,48,49,51,53,54,55,61,62,63,64,65,66,67,68,69,71,73,74,75,77,79,
+    81,82,83,84,85,86,87,88,89,91,92,93,94,95,96,97,98,99]);
+  const FALSOS = ['12345678','123456789','87654321','987654321','23456789'];
+
+  const so = v => String(v ?? '').replace(/\D/g, '');
+
+  // Corrige acentos quebrados (ex.: "ROBÃ”" -> "ROBÔ")
+  function txt(v) {
+    if (v === null || v === undefined) return '';
+    let s = String(v).replace(/\s+/g, ' ').trim();
+    if (/[ÃÂ][\u0080-¿‚-™]/.test(s)) {
+      try {
+        const map = {'€':0x80,'‚':0x82,'ƒ':0x83,'„':0x84,'…':0x85,'†':0x86,'‡':0x87,
+          'ˆ':0x88,'‰':0x89,'Š':0x8A,'‹':0x8B,'Œ':0x8C,'Ž':0x8E,'‘':0x91,'’':0x92,
+          '“':0x93,'”':0x94,'•':0x95,'–':0x96,'—':0x97,'˜':0x98,'™':0x99,'š':0x9A,
+          '›':0x9B,'œ':0x9C,'ž':0x9E,'Ÿ':0x9F};
+        const bytes = Uint8Array.from([...s].map(c => map[c] ?? c.charCodeAt(0)));
+        if ([...s].every(c => map[c] !== undefined || c.charCodeAt(0) < 256)) {
+          const out = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+          s = out;
+        }
+      } catch (e) { /* mantém original */ }
+    }
+    return s;
+  }
+
+  // Telefone: DDD + número, sem 55, com nono dígito
+  function telefone(v) {
+    const original = txt(v);
+    let d = so(v);
+    if (!d) return null;
+    d = d.replace(/^0+/, '');
+    if (!d) return { numero: so(v), original, status: 'inutil' };
+    if ((d.length === 12 || d.length === 13) && d.startsWith('55') && DDDS.has(+d.slice(2, 4))) d = d.slice(2);
+    if ((d.length === 12 || d.length === 13) && d.slice(0, 2) === d.slice(2, 4)) d = d.slice(2); // DDD duplicado
+    if (d.length === 10 && /[6-9]/.test(d[2])) d = d.slice(0, 2) + '9' + d.slice(2);        // nono dígito
+    const ddd = +d.slice(0, 2), num = d.slice(2);
+    let ok = DDDS.has(ddd) && ((d.length === 11 && d[2] === '9') || (d.length === 10 && /[2-5]/.test(d[2])));
+    if (ok) {
+      const base = num.length === 9 ? num.slice(1) : num;
+      if (/^(\d)\1+$/.test(base) || FALSOS.includes(base) || FALSOS.includes(num) || /(\d)\1{6,}/.test(num)) ok = false;
+    }
+    return { numero: d, original, status: ok ? 'valido' : 'inutil' };
+  }
+
+  function cpfOk(d) {
+    if (d.length !== 11 || /^(\d)\1+$/.test(d)) return false;
+    for (const n of [9, 10]) {
+      let s = 0; for (let i = 0; i < n; i++) s += +d[i] * (n + 1 - i);
+      if ((s * 10) % 11 % 10 !== +d[n]) return false;
+    }
+    return true;
+  }
+  function cnpjOk(d) {
+    if (d.length !== 14 || /^(\d)\1+$/.test(d)) return false;
+    const w1 = [5,4,3,2,9,8,7,6,5,4,3,2], w2 = [6, ...w1];
+    for (const [w, n] of [[w1, 12], [w2, 13]]) {
+      let s = 0; for (let i = 0; i < n; i++) s += +d[i] * w[i];
+      const v = 11 - (s % 11);
+      if ((v >= 10 ? 0 : v) !== +d[n]) return false;
+    }
+    return true;
+  }
+  const PJ = /\b(LTDA|EIRELI|EPP|ME|S\/?A|COMERCIO|COM[EÉ]RCIO|CALCADOS|CAL[CÇ]ADOS|MODAS|LOJA|DISTRIBUI)/i;
+
+  // Documento: recupera zeros à esquerda e identifica CPF ou CNPJ pelo dígito verificador
+  function documento(v, nome) {
+    const original = txt(v);
+    const d = so(v);
+    if (!d) return null;
+    if (d.length > 14) return { documento: null, tipo: null, original };
+    const c14 = d.padStart(14, '0'), c11 = d.padStart(11, '0');
+    const pj = cnpjOk(c14), pf = d.length <= 11 && cpfOk(c11);
+    if (pj && !pf) return { documento: c14, tipo: 'CNPJ', original };
+    if (pf && !pj) return { documento: c11, tipo: 'CPF', original };
+    if (pj && pf) {
+      const filial = c14.slice(8, 12);
+      if (/^000[1-9]$/.test(filial) || PJ.test(nome || '')) return { documento: c14, tipo: 'CNPJ', original };
+      return { documento: c11, tipo: 'CPF', original };
+    }
+    return { documento: null, tipo: null, original };
+  }
+
+  // Datas: 20190613, 2019-06-13, 13/06/2019, data do Excel
+  function data(v) {
+    if (v === null || v === undefined || v === '') return null;
+    if (v instanceof Date && !isNaN(v)) return v.toISOString().slice(0, 10);
+    const s = String(v).trim();
+    if (!s) return null;
+    let m;
+    if ((m = s.match(/^(\d{4})(\d{2})(\d{2})$/))) return valida(m[1], m[2], m[3]);
+    if ((m = s.match(/^(\d{4})-(\d{2})-(\d{2})/))) return valida(m[1], m[2], m[3]);
+    if ((m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/))) return valida(m[3], m[2].padStart(2, '0'), m[1].padStart(2, '0'));
+    if (/^\d{5}(\.\d+)?$/.test(s)) { // serial do Excel
+      const dt = new Date(Math.round((+s - 25569) * 864e5));
+      return dt.toISOString().slice(0, 10);
+    }
+    return null;
+  }
+  function valida(y, m, d) {
+    const iso = `${y}-${m}-${d}`, dt = new Date(iso + 'T00:00:00Z');
+    return !isNaN(dt) && dt.toISOString().slice(0, 10) === iso && +y > 1950 && +y < 2100 ? iso : null;
+  }
+
+  const norm = s => txt(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+
+  // Sugere o campo de cada coluna pelos apelidos registrados
+  function sugerir(colunas, campos) {
+    return colunas.map(c => {
+      const n = norm(c);
+      const hit = campos.find(f => f.chave === n || norm(f.rotulo) === n || (f.apelidos || []).some(a => norm(a) === n));
+      return hit ? hit.chave : '';
+    });
+  }
+
+  const PADRAO = ['nome','codigo_cliente','contato','email','data_cadastro','ultima_compra','situacao','vendedor'];
+  const DATAS = ['data_cadastro','ultima_compra'];
+
+  // Converte uma linha da planilha num registro normalizado
+  //   mapa: [{coluna, campo}] ; campo '' = ignorar
+  function linha(row, mapa) {
+    const r = { telefones: [], doc: null, docOriginal: null, campos: {}, extras: {} };
+    let docBruto = null;
+    for (const { coluna, campo } of mapa) {
+      if (!campo) continue;
+      const v = row[coluna];
+      if (campo === 'telefone') { const t = telefone(v); if (t) r.telefones.push(t); }
+      else if (campo === 'documento') { if (so(v)) docBruto = v; }
+      else if (DATAS.includes(campo)) { const d = data(v); if (d) r.campos[campo] = d; }
+      else if (PADRAO.includes(campo)) { const s = txt(v); if (s) r.campos[campo] = s; }
+      else {
+        let s = v instanceof Date ? v.toISOString().slice(0, 10) : txt(v);
+        if (s) r.extras[campo] = s;
+      }
+    }
+    if (docBruto !== null) {
+      const d = documento(docBruto, r.campos.nome);
+      if (d) { r.doc = d.documento ? d : null; if (!d.documento) r.docOriginal = d.original; }
+    }
+    const vistos = new Set();
+    r.telefones = r.telefones.filter(t => !vistos.has(t.numero) && vistos.add(t.numero));
+    return r;
+  }
+
+  return { telefone, documento, data, txt, sugerir, linha, cpfOk, cnpjOk, so, norm, PADRAO };
+})();
+
+
+</script>
+<script>
+// ============================ CONFIG ============================
+const SUPABASE_URL = 'https://ufsoulckfkhtwurgyxlp.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_sVLKxtFEwXYrMMEHbxd6Rg_gMHf7JKe';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const LOTE = 500;
+
+// ============================ UTIL ============================
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt = n => (n ?? 0).toLocaleString('pt-BR');
+const dataBR = d => d ? d.slice(0,10).split('-').reverse().join('/') : '';
+const fmtDoc = (d,t) => !d ? '' : t === 'CPF' ? d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/,'$1.$2.$3-$4') : d.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/,'$1.$2.$3/$4-$5');
+const fmtTel = t => !t ? '' : t.length === 11 ? `(${t.slice(0,2)}) ${t.slice(2,7)}-${t.slice(7)}` : t.length === 10 ? `(${t.slice(0,2)}) ${t.slice(2,6)}-${t.slice(6)}` : t;
+const hoje = () => new Date(Date.now() - new Date().getTimezoneOffset()*6e4).toISOString().slice(0,10);
+const chunk = (a, n) => { const o = []; for (let i = 0; i < a.length; i += n) o.push(a.slice(i, i + n)); return o; };
+let toastT;
+function toast(msg, tipo = '') { const t = $('#toast'); t.className = 'toast show ' + tipo; t.innerHTML = msg; clearTimeout(toastT); toastT = setTimeout(() => t.className = 'toast', tipo === 'err' ? 7000 : 3500); }
+async function q(p) { const { data, error } = await p; if (error) { console.error(error); throw new Error(error.message || 'Erro no banco'); } return data; }
+async function todos(build) { // pagina leituras grandes
+  let out = [], de = 0;
+  for (;;) { const d = await q(build().range(de, de + 999)); out = out.concat(d); if (d.length < 1000) return out; de += 1000; }
+}
+const COR = r => ['var(--muted)','var(--r1)','var(--r2)','var(--r3)'][Math.min(r,3)] ;
+const nomeRodada = r => `${r + 1}ª rodada`;
+function seg(el, cb) { el.querySelectorAll('button').forEach(b => b.onclick = () => { el.querySelectorAll('button').forEach(x => x.classList.remove('on')); b.classList.add('on'); cb && cb(b); }); }
+const segVal = el => el.querySelector('button.on');
+
+// ============================ ESTADO ============================
+let BASES = [], CAMPOS = [];
+async function carregarBases() { BASES = await q(sb.from('cl_bases').select('*').order('nome')); }
+async function carregarCampos() { CAMPOS = await q(sb.from('cl_campos').select('*').order('ordem').order('rotulo')); }
+
+async function kpis() {
+  try {
+    const [t] = await q(sb.rpc('cl_totais'));
+    $('#kpis').innerHTML = [['Lojistas', t.lojistas], ['Com CPF/CNPJ', t.com_documento], ['Telefones úteis', t.telefones_validos], ['Telefones inúteis', t.telefones_inuteis], ['Lotes', t.lotes]]
+      .map(([k, v]) => `<div class="kpi"><b class="mono">${fmt(v)}</b>${k}</div>`).join('');
+  } catch (e) { $('#kpis').innerHTML = `<span class="tag bad">Sem conexão com o banco</span>`; }
+}
+
+// ============================ ABAS ============================
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
+  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x.id === 'tab-' + b.dataset.tab));
+  ({ disparo: telaDisparo, importar: histImport, lotes: telaLotes, conversas: histConversas, lojistas: telaLojistas })[b.dataset.tab]();
+});
+
+// ============================ DISPARO ============================
+let baseSel = null, resumo = {}, loteAtual = null;
+async function telaDisparo() {
+  await carregarBases();
+  const rs = await q(sb.rpc('cl_resumo_bases'));
+  const ult = await q(sb.from('cl_lotes').select('base_id,data').order('data', { ascending: false }).limit(1000));
+  resumo = {};
+  rs.forEach(r => { (resumo[r.base_id] ||= []).push(r); });
+  if (!BASES.length) { $('#bases').innerHTML = `<div class="empty">Nenhuma base ainda. Comece em <b>Importar base</b>.</div>`; $('#painel').style.display = 'none'; return; }
+  $('#bases').innerHTML = BASES.map(b => {
+    const rr = (resumo[b.id] || []).sort((a, c) => a.rodada - c.rodada);
+    const tot = rr.reduce((s, r) => s + +r.total, 0);
+    const u = ult.find(l => l.base_id === b.id);
+    const bar = rr.map(r => `<i style="width:${tot ? r.total / tot * 100 : 0}%;background:${COR(r.rodada)}"></i>`).join('');
+    const leg = rr.map(r => `<span style="--c:${COR(r.rodada)}">${r.rodada === 0 ? 'Nunca disparados' : r.rodada + 'x'}: ${fmt(+r.total)}</span>`).join('');
+    return `<div class="base ${baseSel === b.id ? 'on' : ''}" data-id="${b.id}"><div class="n">${esc(b.nome)}</div><div class="t">${fmt(tot)} lojistas · ${u ? 'último disparo ' + dataBR(u.data) : 'sem disparos'}</div><div class="bar">${bar}</div><div class="leg">${leg}</div></div>`;
+  }).join('');
+  document.querySelectorAll('.base').forEach(el => el.onclick = () => abrirBase(+el.dataset.id));
+  if (baseSel) abrirBase(baseSel);
+}
+function abrirBase(id) {
+  baseSel = id; loteAtual = null; $('#previa').innerHTML = '';
+  document.querySelectorAll('.base').forEach(el => el.classList.toggle('on', +el.dataset.id === id));
+  const b = BASES.find(x => x.id === id), rr = (resumo[id] || []).sort((a, c) => a.rodada - c.rodada);
+  $('#pTitulo').textContent = 'Disparar · ' + b.nome;
+  const minR = (rr.find(r => +r.com_telefone > 0) || rr[0] || { rodada: 0 }).rodada;
+  $('#pRodada').innerHTML = rr.map(r => `<option value="${r.rodada}" ${r.rodada === minR ? 'selected' : ''}>${nomeRodada(r.rodada)} · ${fmt(+r.com_telefone)} com telefone útil</option>`).join('')
+    + (rr.length ? `<option value="${rr.at(-1).rodada + 1}">${nomeRodada(rr.at(-1).rodada + 1)} · ninguém ainda</option>` : '');
+  $('#painel').style.display = '';
+}
+seg($('#pEquipe')); seg($('#pOrdem'));
+$('#pGerar').onclick = async () => {
+  const btn = $('#pGerar'); btn.disabled = true;
+  try {
+    const qtd = Math.max(1, +$('#pQtd').value || 500);
+    const rows = await q(sb.rpc('cl_proximo_lote', { p_base: baseSel, p_rodada: +$('#pRodada').value, p_qtd: qtd, p_dias: +$('#pDias').value, p_desc: segVal($('#pOrdem')).dataset.v === '1' }));
+    const vistos = new Set(), sel = [];
+    for (const r of rows) { if (vistos.has(r.telefone)) continue; vistos.add(r.telefone); sel.push(r); if (sel.length >= qtd) break; }
+    const equipe = segVal($('#pEquipe')).textContent, b = BASES.find(x => x.id === baseSel);
+    const d = hoje(), suf = { Closer: '', Developer: '_Dev', Farmer: '_Farmer' }[equipe];
+    const arquivo = `Disparo_Ativo_${b.nome.normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^\w]+/g, '_')}${suf}_${d.slice(8,10)}-${d.slice(5,7)}.xlsx`;
+    loteAtual = { sel, equipe, arquivo, base: baseSel, rodada: +$('#pRodada').value };
+    if (!sel.length) { $('#previa').innerHTML = `<div class="empty">Ninguém disponível nesta rodada com esses filtros.</div>`; return; }
+    $('#previa').innerHTML = `
+      <div class="stats"><div class="stat"><b>${fmt(sel.length)}</b><small>lojistas no lote</small></div><div class="stat"><b>${equipe}</b><small>time</small></div><div class="stat"><b>${nomeRodada(loteAtual.rodada)}</b><small>rodada</small></div></div>
+      ${sel.length < qtd ? `<p class="muted">Só ${fmt(sel.length)} disponíveis com esses filtros.</p>` : ''}
+      <div class="scroll"><table><thead><tr><th>id</th><th>nome</th><th>CPF/CNPJ</th></tr></thead><tbody>
+      ${sel.slice(0, 8).map(r => `<tr><td class="mono">${r.telefone}</td><td>${esc(r.nome)}</td><td class="mono">${r.documento || '<span class="muted">sem documento</span>'}</td></tr>`).join('')}
+      ${sel.length > 8 ? `<tr><td colspan="3" class="muted">+ ${fmt(sel.length - 8)} lojistas</td></tr>` : ''}</tbody></table></div>
+      <div class="row" style="margin-top:14px;justify-content:flex-end;align-items:center"><div class="muted" style="flex:1">${esc(arquivo)}</div><div class="fit"><button class="btn" id="pBaixar">Baixar e registrar lote</button></div></div>`;
+    $('#pBaixar').onclick = baixarLote;
+  } catch (e) { toast('Erro ao gerar: ' + esc(e.message), 'err'); }
+  finally { btn.disabled = false; }
+};
+async function baixarLote() {
+  const L = loteAtual; if (!L) return; $('#pBaixar').disabled = true;
+  try {
+    const itens = L.sel.map(r => ({ lojista_id: r.lojista_id, telefone: r.telefone }));
+    await q(sb.rpc('cl_registrar_lote', { p_base: L.base, p_equipe: L.equipe, p_data: hoje(), p_arquivo: L.arquivo, p_origem: 'central', p_itens: itens }));
+    const aoa = [['id', 'telefone', 'nome', 'cnpj_cpf'], ...L.sel.map(r => [r.telefone, r.telefone, r.nome || '', r.documento || ''])];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    Object.keys(ws).forEach(k => { if (k[0] !== '!' && ws[k].t === 'n') { ws[k].t = 's'; ws[k].v = String(ws[k].v); } });
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Planilha1'); XLSX.writeFile(wb, L.arquivo);
+    toast(`Lote registrado: <b>${fmt(L.sel.length)}</b> lojistas.`, 'ok');
+    loteAtual = null; $('#previa').innerHTML = ''; telaDisparo(); kpis();
+  } catch (e) { toast('Erro ao registrar: ' + esc(e.message), 'err'); $('#pBaixar').disabled = false; }
+}
+
+// ============================ LEITURA DE PLANILHA ============================
+function lerArquivo(file) {
+  return new Promise((ok, err) => {
+    const fr = new FileReader();
+    fr.onload = e => { try { ok(XLSX.read(new Uint8Array(e.target.result), { type: 'array', cellDates: true })); } catch (x) { err(x); } };
+    fr.onerror = err; fr.readAsArrayBuffer(file);
+  });
+}
+function linhasDaAba(wb, aba) {
+  const rows = XLSX.utils.sheet_to_json(wb.Sheets[aba], { defval: '', raw: true });
+  const cols = rows.length ? Object.keys(rows[0]).filter(c => !/^__EMPTY/.test(c)) : [];
+  return { rows: rows.filter(r => cols.some(c => String(r[c]).trim() !== '')), cols };
+}
+function dropzone(el, input, cb) {
+  input.onchange = () => input.files.length && cb([...input.files]);
+  el.ondragover = e => { e.preventDefault(); el.classList.add('over'); };
+  el.ondragleave = () => el.classList.remove('over');
+  el.ondrop = e => { e.preventDefault(); el.classList.remove('over'); e.dataTransfer.files.length && cb([...e.dataTransfer.files]); };
+}
+
+// ============================ IMPORTAR ============================
+let IMP = null;
+dropzone($('#iDrop'), $('#iFile'), async ([f]) => {
+  try {
+    await carregarCampos(); await carregarBases();
+    const wb = await lerArquivo(f);
+    const abas = wb.SheetNames.filter(n => linhasDaAba(wb, n).rows.length);
+    IMP = { wb, arquivo: f.name };
+    $('#iNomeArq').value = f.name;
+    $('#iAba').innerHTML = abas.map(a => `<option>${esc(a)}</option>`).join('');
+    $('#iAbaBox').style.display = abas.length > 1 ? '' : 'none';
+    const palpite = BASES.find(b => f.name.toLowerCase().replace(/[_\s-]/g, '').includes(b.nome.toLowerCase().replace(/[_\s-]/g, '')));
+    $('#iBase').innerHTML = `<option value="">Escolha…</option>` + BASES.map(b => `<option value="${b.id}" ${palpite && palpite.id === b.id ? 'selected' : ''}>${esc(b.nome)}</option>`).join('') + `<option value="nova">+ Nova base</option>`;
+    $('#iNovaBaseBox').style.display = 'none';
+    montarMapa(); $('#iEtapa2').style.display = ''; $('#iResumo').innerHTML = ''; $('#iDrop').style.display = 'none';
+  } catch (e) { toast('Não consegui ler o arquivo: ' + esc(e.message), 'err'); }
+  $('#iFile').value = '';
+});
+$('#iAba').onchange = montarMapa;
+$('#iBase').onchange = () => { $('#iNovaBaseBox').style.display = $('#iBase').value === 'nova' ? '' : 'none'; };
+$('#iCancelar').onclick = resetImport;
+function resetImport() { IMP = null; $('#iEtapa2').style.display = 'none'; $('#iDrop').style.display = ''; $('#iResumo').innerHTML = ''; }
+function opcoesCampo(sel) {
+  return `<option value="">— ignorar —</option>` + CAMPOS.map(c => `<option value="${esc(c.chave)}" ${c.chave === sel ? 'selected' : ''}>${esc(c.rotulo)}${c.padrao ? '' : ' ·'}</option>`).join('') + `<option value="__novo">+ Novo campo…</option>`;
+}
+function montarMapa() {
+  const { rows, cols } = linhasDaAba(IMP.wb, $('#iAba').value);
+  IMP.rows = rows; IMP.cols = cols;
+  const sug = CL.sugerir(cols, CAMPOS);
+  $('#iMapa').innerHTML = cols.map((c, i) => {
+    const ex = rows.slice(0, 3).map(r => r[c] instanceof Date ? r[c].toISOString().slice(0,10) : CL.txt(r[c])).filter(Boolean).join(' · ');
+    return `<tr><td>${esc(c)}</td><td class="ex" title="${esc(ex)}">${esc(ex) || '<span class="muted">vazio</span>'}</td><td><select data-i="${i}">${opcoesCampo(sug[i])}</select></td></tr>`;
+  }).join('') || `<tr><td colspan="3" class="empty">Aba sem dados.</td></tr>`;
+  $('#iMapa').querySelectorAll('select').forEach(s => s.onchange = () => novoCampo(s));
+}
+async function novoCampo(s) {
+  if (s.value !== '__novo') return;
+  const col = IMP.cols[+s.dataset.i];
+  const nome = (window.prompt('Nome do novo campo:', col) || '').trim();
+  if (!nome) { s.value = ''; return; }
+  const chave = CL.norm(nome).replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+  if (!chave) { s.value = ''; return; }
+  try {
+    if (!CAMPOS.find(c => c.chave === chave)) {
+      await q(sb.from('cl_campos').insert({ chave, rotulo: nome, padrao: false, apelidos: [CL.norm(col)] }));
+      await carregarCampos();
+    }
+    $('#iMapa').querySelectorAll('select').forEach(x => { const v = x === s ? chave : x.value; x.innerHTML = opcoesCampo(v); });
+    toast(`Campo <b>${esc(nome)}</b> criado.`, 'ok');
+  } catch (e) { toast('Erro ao criar campo: ' + esc(e.message), 'err'); s.value = ''; }
+}
+
+$('#iAnalisar').onclick = async () => {
+  const mapa = [...$('#iMapa').querySelectorAll('select')].map(s => ({ coluna: IMP.cols[+s.dataset.i], campo: s.value === '__novo' ? '' : s.value }));
+  if (!mapa.some(m => m.campo === 'telefone') && !mapa.some(m => m.campo === 'documento')) return toast('Indique pelo menos a coluna de telefone ou de CPF/CNPJ.', 'err');
+  if ($('#iBase').value === '' || ($('#iBase').value === 'nova' && !$('#iNovaBase').value.trim())) return toast('Escolha a base de destino.', 'err');
+  const btn = $('#iAnalisar'); btn.disabled = true; btn.textContent = 'Analisando…';
+  try { IMP.mapa = mapa; IMP.plano = await planejar(IMP.rows, mapa, { baseId: +$('#iBase').value || null }); mostrarPlano(); }
+  catch (e) { toast('Erro na análise: ' + esc(e.message), 'err'); }
+  finally { btn.disabled = false; btn.textContent = 'Analisar'; }
+};
+
+// Agrupa as linhas da planilha em lojistas e cruza com o banco
+// Agrupa as linhas de qualquer planilha em lojistas, cruza com o banco e devolve o plano de gravação.
+//   opts.baseId: base de destino (prefere lojistas dela quando um telefone é compartilhado)
+//   opts.vincularExistentes: false = só os lojistas novos entram na base (usado nos arquivos de disparo)
+async function planejar(rows, mapa, opts = {}) {
+  const vincularExistentes = opts.vincularExistentes !== false;
+  const regs = rows.map((r, i) => ({ ...CL.linha(r, mapa), ordem: i + 1, bruto: r }));
+  // 1) agrupa dentro do arquivo: documento primeiro, depois telefone
+  const grupos = [], porDoc = new Map(), porTel = new Map();
+  let ignorados = 0;
+  for (const r of regs) {
+    let g = r.doc ? porDoc.get(r.doc.documento) : null;
+    const uteis = r.telefones.filter(t => t.status === 'valido');
+    if (!g && !r.doc) for (const t of uteis) { const x = porTel.get(t.numero); if (x) { g = x; break; } }
+    if (!g && r.doc) for (const t of uteis) { const x = porTel.get(t.numero); if (x && !x.doc) { g = x; break; } }
+    if (!g) {
+      if (!r.doc && !r.telefones.length) { ignorados++; continue; }
+      g = { doc: null, docOriginal: null, telefones: [], campos: {}, extras: {}, ordem: r.ordem, bruto: r.bruto };
+      grupos.push(g);
+    }
+    r.g = g;
+    if (r.doc && !g.doc) { g.doc = r.doc; porDoc.set(r.doc.documento, g); }
+    if (r.docOriginal && !g.docOriginal) g.docOriginal = r.docOriginal;
+    for (const t of r.telefones) { if (!g.telefones.some(x => x.numero === t.numero)) g.telefones.push(t); if (t.status === 'valido' && !porTel.has(t.numero)) porTel.set(t.numero, g); }
+    for (const [k, v] of Object.entries(r.campos)) if (!g.campos[k]) g.campos[k] = v;
+    for (const [k, v] of Object.entries(r.extras)) if (!g.extras[k]) g.extras[k] = v;
+  }
+  // 2) busca no banco quem já existe (por documento e por telefone)
+  const docs = [...new Set(grupos.filter(g => g.doc).map(g => g.doc.documento))];
+  const numeroDe = t => t.numero || CL.so(t.original);
+  const tels = [...new Set(grupos.flatMap(g => g.telefones.map(numeroDe)).filter(Boolean))];
+  const exist = new Map(), docMap = new Map(), telMap = new Map();
+  for (const c of chunk(docs, 200)) (await q(sb.from('cl_lojistas').select('*').in('documento', c))).forEach(l => { exist.set(l.id, l); docMap.set(l.documento, l.id); });
+  for (const c of chunk(tels, 200)) (await q(sb.from('cl_telefones').select('lojista_id,numero').in('numero', c))).forEach(t => { (telMap.get(t.numero) || telMap.set(t.numero, new Set()).get(t.numero)).add(t.lojista_id); });
+  const faltam = [...new Set([...telMap.values()].flatMap(s => [...s]))].filter(id => !exist.has(id));
+  for (const c of chunk(faltam, 200)) (await q(sb.from('cl_lojistas').select('*').in('id', c))).forEach(l => exist.set(l.id, l));
+  const naBase = new Set();
+  if (opts.baseId) for (const c of chunk([...exist.keys()], 200)) (await q(sb.from('cl_lojista_base').select('lojista_id').eq('base_id', opts.baseId).in('lojista_id', c))).forEach(x => naBase.add(x.lojista_id));
+  // 3) decide novo x existente e mescla (só completa o que estiver vazio)
+  const recs = new Map(); let novos = 0, atualizados = 0, telInuteis = 0;
+  const telefones = [], vinculos = new Map(), telVistos = new Set();
+  const agora = new Date().toISOString();
+  for (const g of grupos) {
+    let id = g.doc ? docMap.get(g.doc.documento) : null;
+    if (!id) { // 1) telefone útil que pertence a um único lojista
+      for (const t of g.telefones.filter(t => t.status === 'valido')) {
+        const s = telMap.get(t.numero); if (!s || s.size !== 1) continue;
+        const cand = [...s][0], l = exist.get(cand);
+        if (l && (!g.doc || !l.documento)) { id = cand; break; }
+      }
+    }
+    if (!id && g.campos.nome) { // 2) mesmo telefone (útil ou não) e mesmo nome, sem documento conflitante
+      const nomeG = CL.norm(g.campos.nome);
+      for (const t of g.telefones) {
+        for (const cand of telMap.get(numeroDe(t)) || []) {
+          const l = exist.get(cand);
+          if (l && !l.documento && CL.norm(l.nome || '') === nomeG) { id = cand; break; }
+        }
+        if (id) break;
+      }
+    }
+    if (!id && !g.doc) { // 3) telefone útil compartilhado: fica com o lojista da base de destino, senão o primeiro
+      for (const t of g.telefones.filter(t => t.status === 'valido')) {
+        const s = [...(telMap.get(t.numero) || [])].filter(c => exist.has(c)); if (!s.length) continue;
+        id = s.find(c => naBase.has(c)) || s[0]; break;
+      }
+    }
+    let rec = id ? recs.get(id) : null;          // mesmo lojista já visto nesta planilha: une
+    if (!rec) {
+      if (id) { rec = { ...exist.get(id) }; atualizados++; }
+      else { rec = { id: crypto.randomUUID(), extras: {}, created_at: agora, _novo: true }; novos++; }
+      recs.set(rec.id, rec);
+    }
+    g.recId = rec.id;
+    if (g.doc && !rec.documento) { rec.documento = g.doc.documento; rec.tipo_doc = g.doc.tipo; }
+    if (g.docOriginal && !rec.documento && !rec.doc_original) rec.doc_original = g.docOriginal;
+    for (const [k, v] of Object.entries(g.campos)) if (!rec[k]) rec[k] = v;
+    rec.extras = { ...(rec.extras || {}) };
+    for (const [k, v] of Object.entries(g.extras)) if (!rec.extras[k]) rec.extras[k] = v;
+    rec.updated_at = agora;
+    for (const t of g.telefones) {
+      const numero = numeroDe(t), chave = rec.id + '|' + numero;
+      if (telVistos.has(chave)) continue; telVistos.add(chave);
+      if (t.status === 'inutil') telInuteis++;
+      telefones.push({ lojista_id: rec.id, numero, numero_original: t.original, status: t.status });
+    }
+    if (!vinculos.has(rec.id) && (vincularExistentes || rec._novo)) vinculos.set(rec.id, { lojista_id: rec.id, ordem: g.ordem, dados: g.bruto });
+  }
+  const lojistas = [...recs.values()].map(({ _novo, ...l }) => l);
+  const linhaId = regs.map(r => (r.g ? r.g.recId : null));
+  const linhaTel = regs.map(r => ((r.telefones.find(t => t.status === 'valido') || {}).numero || null));
+  const comUtil = new Set(telefones.filter(t => t.status === 'valido').map(t => t.lojista_id));
+  return { linhas: rows.length, lojistas, telefones, vinculos: [...vinculos.values()], linhaId, linhaTel, novos, atualizados, ignorados, telInuteis,
+           semDoc: lojistas.filter(l => !l.documento).length, semTelUtil: lojistas.filter(l => !comUtil.has(l.id)).length };
+}
+function mostrarPlano() {
+  const p = IMP.plano;
+  $('#iResumo').innerHTML = `<h3 style="margin-top:22px">Resultado da análise</h3>
+    <div class="stats">
+      <div class="stat"><b>${fmt(p.linhas)}</b><small>linhas na planilha</small></div>
+      <div class="stat"><b>${fmt(p.lojistas.length)}</b><small>lojistas únicos</small></div>
+      <div class="stat"><b style="color:var(--ok)">${fmt(p.novos)}</b><small>novos na central</small></div>
+      <div class="stat"><b style="color:var(--acc)">${fmt(p.atualizados)}</b><small>já existiam (serão completados)</small></div>
+      <div class="stat"><b>${fmt(p.semDoc)}</b><small>sem CPF/CNPJ</small></div>
+      <div class="stat"><b style="color:var(--warn)">${fmt(p.semTelUtil)}</b><small>sem telefone útil</small></div>
+      ${p.ignorados ? `<div class="stat"><b style="color:var(--bad)">${fmt(p.ignorados)}</b><small>sem telefone nem documento (ignoradas)</small></div>` : ''}
+    </div>
+    <p class="muted">Linhas repetidas na planilha foram unidas no mesmo lojista. Telefones inúteis ficam registrados, mas não entram em disparo.</p>
+    <div class="row" style="justify-content:flex-end"><div class="fit"><button class="btn" id="iConfirmar">Confirmar importação</button></div></div>
+    <div class="prog" id="iProg" style="display:none"><i></i></div><div class="muted" id="iProgTxt"></div>`;
+  $('#iConfirmar').onclick = gravar;
+}
+async function gravar() {
+  const btn = $('#iConfirmar'); btn.disabled = true;
+  const p = IMP.plano, prog = $('#iProg'), bar = prog.querySelector('i'), txt = $('#iProgTxt');
+  prog.style.display = '';
+  const total = p.lojistas.length + p.telefones.length + p.vinculos.length; let feito = 0;
+  const passo = (n, msg) => { feito += n; bar.style.width = (feito / total * 100).toFixed(1) + '%'; txt.textContent = msg; };
+  try {
+    const baseId = await baseDestino($('#iBase').value, $('#iNovaBase').value);
+    await gravarPlano(p, baseId, passo);
+    // aprende os nomes de coluna para a próxima importação
+    for (const m of IMP.mapa.filter(m => m.campo)) {
+      const c = CAMPOS.find(x => x.chave === m.campo), ap = CL.norm(m.coluna);
+      if (c && !(c.apelidos || []).map(CL.norm).includes(ap)) { c.apelidos = [...(c.apelidos || []), ap]; await q(sb.from('cl_campos').update({ apelidos: c.apelidos }).eq('chave', c.chave)); }
+    }
+    await q(sb.from('cl_importacoes').insert({ tipo: 'base', base_id: baseId, arquivo: IMP.arquivo, mapeamento: IMP.mapa, linhas: p.linhas, novos: p.novos, atualizados: p.atualizados, ignorados: p.ignorados, tel_inuteis: p.telInuteis }));
+    txt.textContent = 'Concluído.';
+    toast(`Importação concluída: <b>${fmt(p.novos)}</b> novos, <b>${fmt(p.atualizados)}</b> completados.`, 'ok');
+    resetImport(); histImport(); kpis();
+  } catch (e) { toast('Erro ao gravar: ' + esc(e.message) + '. Pode confirmar de novo: nada é duplicado.', 'err'); btn.disabled = false; }
+}
+// Grava lojistas, telefones e vínculos de um plano (usado por toda importação)
+async function gravarPlano(p, baseId, passo = () => {}) {
+  for (const c of chunk(p.lojistas, LOTE)) { await q(sb.from('cl_lojistas').upsert(c, { onConflict: 'id' })); passo(c.length, 'Gravando lojistas…'); }
+  for (const c of chunk(p.telefones, LOTE)) { await q(sb.from('cl_telefones').upsert(c, { onConflict: 'lojista_id,numero', ignoreDuplicates: true })); passo(c.length, 'Gravando telefones…'); }
+  for (const c of chunk(p.vinculos.map(v => ({ ...v, base_id: baseId })), LOTE)) { await q(sb.from('cl_lojista_base').upsert(c, { onConflict: 'lojista_id,base_id' })); passo(c.length, 'Vinculando à base…'); }
+  await q(sb.rpc('cl_recalcular_rodadas', { p_base: baseId, p_ids: null }));
+}
+async function baseDestino(valor, nomeNova) { // devolve o id, criando a base se for nova
+  if (valor !== 'nova') return +valor;
+  const nome = nomeNova.trim(); await carregarBases();
+  const ex = BASES.find(b => b.nome.toLowerCase() === nome.toLowerCase());
+  return ex ? ex.id : (await q(sb.from('cl_bases').insert({ nome }).select().single())).id;
+}
+async function histImport() {
+  await carregarBases();
+  const h = await q(sb.from('cl_importacoes').select('*').order('created_at', { ascending: false }).limit(50));
+  const TIPO = { base: 'Base de clientes', conversas: 'Conversas HyperFlow', disparo: 'Arquivo de disparo' };
+  $('#iHist').innerHTML = h.length ? `<table><thead><tr><th>Data</th><th>Tipo</th><th>Arquivo</th><th>Base</th><th class="right">Linhas</th><th class="right">Lojistas novos</th><th class="right">Completados</th><th class="right">Tel. inúteis</th></tr></thead><tbody>
+    ${h.map(i => `<tr><td>${dataBR(i.created_at)}</td><td><span class="tag ${i.tipo === 'base' ? 'acc' : ''}">${TIPO[i.tipo] || i.tipo}</span></td><td>${esc(i.arquivo)}</td><td>${esc((BASES.find(b => b.id === i.base_id) || {}).nome || '—')}</td><td class="right mono">${fmt(i.linhas)}</td><td class="right mono">${fmt(i.novos)}</td><td class="right mono">${fmt(i.atualizados)}</td><td class="right mono">${fmt(i.tel_inuteis)}</td></tr>`).join('')}</tbody></table>`
+    : `<div class="empty">Nenhuma importação ainda.</div>`;
+}
+
+// ============================ LOTES ============================
+let HIST = [];
+function lerNomeDisparo(nome) {
+  const n = nome.replace(/\.[^.]+$/, '');
+  const equipe = /_dev(_|$)/i.test(n) ? 'Developer' : /_farmer(_|$)/i.test(n) ? 'Farmer' : 'Closer';
+  let data = '';
+  const m = n.match(/(\d{1,2})[-_.](\d{1,2})(?:[-_.](\d{2,4}))?$/);
+  if (m) {
+    const hj = hoje(); let y = m[3] ? (m[3].length === 2 ? '20' + m[3] : m[3]) : hj.slice(0, 4);
+    let d = `${y}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+    if (!m[3] && d > hj) d = `${+y - 1}${d.slice(4)}`;
+    data = d;
+  }
+  const limpo = n.replace(/^.*?disparo_ativo_/i, '').replace(/_(dev|farmer)(?=_|$)/i, '').replace(/_?\d{1,2}[-_.]\d{1,2}([-_.]\d{2,4})?$/, '').replace(/_/g, ' ').toLowerCase();
+  const sem = s => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
+  const base = limpo ? (BASES.find(b => sem(b.nome) === sem(limpo)) || BASES.find(b => sem(limpo).startsWith(sem(b.nome)) || sem(b.nome).startsWith(sem(limpo)))) : null;
+  const sugerida = n.replace(/^.*?disparo_ativo_/i, '').replace(/_(dev|farmer)(?=_|$)/i, '').replace(/_?\d{1,2}[-_.]\d{1,2}([-_.]\d{2,4})?$/, '').replace(/_/g, ' ').trim();
+  return { equipe, data, base: base ? String(base.id) : (sugerida ? 'nova' : ''), novaBase: sugerida };
+}
+dropzone($('#hDrop'), $('#hFile'), async files => {
+  await carregarBases(); await carregarCampos();
+  if (!BASES.length) { toast('Importe a base antes dos disparos.', 'err'); return; }
+  for (const f of files) {
+    try {
+      const wb = await lerArquivo(f), { rows, cols } = linhasDaAba(wb, wb.SheetNames[0]);
+      const sug = CL.sugerir(cols, CAMPOS);
+      const mapa = cols.map((c, i) => ({ coluna: c, campo: sug[i] || '' }));
+      if (!mapa.some(m => m.campo === 'telefone' || m.campo === 'documento')) { toast(`${esc(f.name)}: não achei coluna de telefone nem de CPF/CNPJ.`, 'err'); continue; }
+      HIST.push({ arquivo: f.name, rows, mapa, ...lerNomeDisparo(f.name) });
+    } catch (e) { toast(`Não consegui ler ${esc(f.name)}`, 'err'); }
+  }
+  $('#hFile').value = ''; desenharHist();
+});
+function desenharHist() {
+  if (!HIST.length) { $('#hLista').innerHTML = ''; return; }
+  $('#hLista').innerHTML = `<h3 style="margin-top:20px">Para processar</h3><div class="scroll"><table><thead><tr><th>Arquivo</th><th class="right">Linhas</th><th>Base</th><th>Time</th><th>Data do disparo</th><th></th></tr></thead><tbody>
+    ${HIST.map((h, i) => `<tr><td>${esc(h.arquivo)}${h.erro ? `<br><span class="tag bad">${esc(h.erro)}</span>` : ''}</td><td class="right mono">${fmt(h.rows.length)}</td>
+      <td><select data-i="${i}" data-k="base"><option value="">Escolha…</option>${BASES.map(b => `<option value="${b.id}" ${h.base == b.id ? 'selected' : ''}>${esc(b.nome)}</option>`).join('')}${h.novaBase ? `<option value="nova" ${h.base === 'nova' ? 'selected' : ''}>+ Nova base "${esc(h.novaBase)}"</option>` : ''}</select></td>
+      <td><select data-i="${i}" data-k="equipe">${['Closer', 'Developer', 'Farmer'].map(e => `<option ${h.equipe === e ? 'selected' : ''}>${e}</option>`).join('')}</select></td>
+      <td><input type="date" data-i="${i}" data-k="data" value="${h.data}"></td>
+      <td class="right"><button class="btn bad" data-rm="${i}">Remover</button></td></tr>`).join('')}
+    </tbody></table></div>
+    <div class="row" style="margin-top:14px;justify-content:flex-end;align-items:center"><div class="muted" id="hMsg" style="flex:1"></div><div class="fit"><button class="btn" id="hRegistrar">Processar ${HIST.length > 1 ? HIST.length + ' arquivos' : 'arquivo'}</button></div></div>`;
+  $('#hLista').querySelectorAll('[data-k]').forEach(el => el.onchange = () => { HIST[+el.dataset.i][el.dataset.k] = el.value; });
+  $('#hLista').querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { HIST.splice(+b.dataset.rm, 1); desenharHist(); });
+  $('#hRegistrar').onclick = registrarHist;
+}
+async function registrarHist() {
+  if (HIST.some(h => !h.base || !h.data)) return toast('Preencha base e data de todos os arquivos.', 'err');
+  $('#hRegistrar').disabled = true;
+  let ok = 0, novosTot = 0;
+  for (const h of [...HIST].sort((a, b) => a.data.localeCompare(b.data))) {
+    $('#hMsg').textContent = 'Processando ' + h.arquivo + '…';
+    try {
+      const baseId = await baseDestino(h.base, h.novaBase || '');
+      if (h.base === 'nova') { h.base = String(baseId); await carregarBases(); HIST.forEach(x => { if (x.base === 'nova' && x.novaBase.toLowerCase() === h.novaBase.toLowerCase()) x.base = String(baseId); }); }
+      // quem não está na central é cadastrado e entra na base do disparo
+      const plano = await planejar(h.rows, h.mapa, { baseId, vincularExistentes: false });
+      await gravarPlano(plano, baseId);
+      const itens = new Map();
+      plano.linhaId.forEach((id, i) => { if (id && !itens.has(id)) itens.set(id, { lojista_id: id, telefone: plano.linhaTel[i] }); });
+      if (!itens.size) throw new Error('nenhuma linha com telefone ou CPF/CNPJ');
+      const loteId = await q(sb.rpc('cl_registrar_lote', { p_base: baseId, p_equipe: h.equipe, p_data: h.data, p_arquivo: h.arquivo, p_origem: 'historico', p_itens: [...itens.values()] }));
+      if (plano.ignorados) await q(sb.from('cl_lotes').update({ nao_encontrados: plano.ignorados }).eq('id', loteId));
+      await q(sb.from('cl_importacoes').insert({ tipo: 'disparo', base_id: baseId, arquivo: h.arquivo, mapeamento: h.mapa, linhas: plano.linhas, novos: plano.novos, atualizados: plano.atualizados, ignorados: plano.ignorados, tel_inuteis: plano.telInuteis }));
+      novosTot += plano.novos;
+      HIST.splice(HIST.indexOf(h), 1); ok++;
+    } catch (e) { h.erro = e.message; }
+  }
+  desenharHist();
+  if (ok) toast(`${ok} ${ok > 1 ? 'lotes processados' : 'lote processado'}${novosTot ? ` · <b>${fmt(novosTot)}</b> lojistas novos cadastrados` : ''}.`, 'ok');
+  telaLotes(); kpis();
+}
+async function telaLotes() {
+  await carregarBases();
+  const atual = $('#lBase').value;
+  $('#lBase').innerHTML = `<option value="">Todas as bases</option>` + BASES.map(b => `<option value="${b.id}" ${atual == b.id ? 'selected' : ''}>${esc(b.nome)}</option>`).join('');
+  const L = await q(sb.rpc('cl_lotes_lista', { p_base: $('#lBase').value ? +$('#lBase').value : null, p_limite: 300 }));
+  $('#lTabela').innerHTML = L.length ? `<table><thead><tr><th>Data</th><th>Base</th><th>Time</th><th class="right">Lojistas</th><th class="right">Respostas</th><th class="right">Taxa</th><th>Origem</th><th>Arquivo</th><th></th></tr></thead><tbody>
+    ${L.map(l => `<tr><td>${dataBR(l.data)}</td><td>${esc((BASES.find(b => b.id === l.base_id) || {}).nome || '—')}</td><td>${l.equipe}</td>
+      <td class="right mono">${fmt(l.quantidade)}${l.nao_encontrados ? `<br><span class="muted" style="font-size:11.5px">${fmt(l.nao_encontrados)} linhas sem telefone/CPF</span>` : ''}</td>
+      ${l.com_historico ? `<td class="right mono">${fmt(+l.respostas)}</td><td class="right mono"><b>${l.quantidade ? (l.respostas / l.quantidade * 100).toFixed(1) + '%' : ''}</b></td>` : `<td class="right muted" colspan="2" style="font-size:12px">sem conversas do período</td>`}
+      <td><span class="tag ${l.origem === 'central' ? 'acc' : ''}">${l.origem === 'central' ? 'central' : 'importado'}</span></td>
+      <td class="muted" style="font-size:12px">${esc(l.arquivo || '')}</td>
+      <td class="right"><span class="confirm" data-id="${l.id}"><button class="btn bad" data-x="1">Excluir</button></span></td></tr>`).join('')}</tbody></table>`
+    : `<div class="empty">Nenhum lote ainda.</div>`;
+  $('#lTabela').querySelectorAll('.confirm').forEach(sp => sp.onclick = async e => {
+    if (e.target.dataset.x === '1') { sp.innerHTML = `<span class="muted" style="font-size:12px">Excluir e devolver a rodada?</span><button class="btn bad" data-x="2">Sim</button><button class="btn sec" data-x="0" style="padding:5px 10px">Não</button>`; }
+    else if (e.target.dataset.x === '0') telaLotes();
+    else if (e.target.dataset.x === '2') { try { await q(sb.rpc('cl_excluir_lote', { p_id: +sp.dataset.id })); toast('Lote excluído.', 'ok'); telaLotes(); kpis(); } catch (er) { toast('Erro: ' + esc(er.message), 'err'); } }
+  });
+}
+$('#lBase').onchange = telaLotes;
+
+// ============================ CONVERSAS ============================
+let CONV = null;
+function dataHF(v) { // "01/10/26 10:14" -> ISO no horário de Brasília
+  if (v instanceof Date && !isNaN(v)) return v.toISOString();
+  const m = String(v ?? '').trim().match(/^(\d{2})\/(\d{2})\/(\d{2,4})(?:\s+(\d{2}):(\d{2}))?/);
+  if (!m) return null;
+  const y = m[3].length === 2 ? '20' + m[3] : m[3];
+  return `${y}-${m[2]}-${m[1]}T${m[4] || '00'}:${m[5] || '00'}:00-03:00`;
+}
+const vazioHF = v => { const s = CL.txt(v); return s && s !== '-' ? s : null; };
+dropzone($('#cDrop'), $('#cFile'), async ([f]) => {
+  try {
+    const wb = await lerArquivo(f);
+    const aba = ['Protocolos - Sintético', 'Protocolos'].find(n => wb.SheetNames.includes(n)) || wb.SheetNames[0];
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[aba], { defval: '', raw: true });
+    const precisa = ['Protocolo', 'Criado em', 'Última Interação Cliente'];
+    const falta = precisa.filter(c => !(rows[0] && c in rows[0]));
+    if (falta.length) throw new Error('não parece o relatório do HyperFlow (faltam: ' + falta.join(', ') + ')');
+    const P = new Map();
+    for (const r of rows) {
+      const id = CL.txt(r['Protocolo']); if (!id) continue;
+      const tel = CL.telefone(vazioHF(r['Origem']) || vazioHF(r['Telefone sem máscara']) || '');
+      const cur = P.get(id) || { protocolo: id, telefone: null, contato: null, departamento: null, agente: null, status: null, classificacao: null, rotulos: null, disparo: false, sentido: null, criado_em: null, ultima_cliente: null, ultima_agente: null, respondeu: false };
+      cur.telefone = cur.telefone || (tel && tel.numero) || null;
+      cur.contato = cur.contato || vazioHF(r['Contato']);
+      cur.departamento = vazioHF(r['Departamento']) || cur.departamento;
+      cur.agente = vazioHF(r['Agente']) || cur.agente;
+      cur.status = vazioHF(r['Status']) || cur.status;
+      cur.classificacao = vazioHF(r['Classificações']) || cur.classificacao;
+      cur.rotulos = vazioHF(r['Rótulos']) || cur.rotulos;
+      cur.disparo = cur.disparo || /disparo lote/i.test(CL.txt(r['Rótulos']));
+      cur.sentido = vazioHF(r['ATIVO']) || cur.sentido;
+      const cr = dataHF(r['Criado em']), uc = dataHF(r['Última Interação Cliente']), ua = dataHF(r['Última Interação Agente']);
+      if (cr && (!cur.criado_em || cr < cur.criado_em)) cur.criado_em = cr;
+      if (uc && (!cur.ultima_cliente || uc > cur.ultima_cliente)) cur.ultima_cliente = uc;
+      if (ua && (!cur.ultima_agente || ua > cur.ultima_agente)) cur.ultima_agente = ua;
+      cur.respondeu = cur.respondeu || !!uc;
+      P.set(id, cur);
+    }
+    const lista = [...P.values()];
+    const disp = lista.filter(c => c.disparo);
+    let existentes = 0;
+    for (const c of chunk(lista.map(x => x.protocolo), 200)) existentes += (await q(sb.from('cl_conversas').select('protocolo').in('protocolo', c))).length;
+    // cada telefone do relatório vira (ou completa) um lojista
+    const contatos = new Map();
+    for (const c of lista) if (c.telefone && !contatos.has(c.telefone)) contatos.set(c.telefone, { telefone: c.telefone, nome: c.contato || '' });
+    for (const c of lista) if (c.telefone && !contatos.get(c.telefone).nome && c.contato) contatos.get(c.telefone).nome = c.contato;
+    await carregarBases();
+    const hf = BASES.find(b => /hyper\s*flow/i.test(b.nome));
+    const plano = await planejar([...contatos.values()], [{ coluna: 'telefone', campo: 'telefone' }, { coluna: 'nome', campo: 'nome' }], { baseId: hf ? hf.id : null });
+    const datas = lista.map(c => c.criado_em).filter(Boolean).sort();
+    CONV = { arquivo: f.name, lista, existentes, plano };
+    const tx = disp.length ? (disp.filter(c => c.respondeu).length / disp.length * 100).toFixed(1) + '%' : '—';
+    $('#cResumo').innerHTML = `<h3 style="margin-top:20px">${esc(f.name)}</h3>
+      <div class="stats">
+        <div class="stat"><b>${fmt(lista.length)}</b><small>conversas (protocolos)</small></div>
+        <div class="stat"><b>${datas.length ? dataBR(datas[0]) + ' a ' + dataBR(datas.at(-1)) : '—'}</b><small>período</small></div>
+        <div class="stat"><b>${fmt(disp.length)}</b><small>vieram de disparo</small></div>
+        <div class="stat"><b style="color:var(--acc)">${tx}</b><small>responderam ao disparo</small></div>
+        <div class="stat"><b style="color:var(--ok)">${fmt(plano.novos)}</b><small>lojistas novos na central</small></div>
+        <div class="stat"><b>${fmt(plano.atualizados)}</b><small>já estavam na central</small></div>
+        ${existentes ? `<div class="stat"><b>${fmt(existentes)}</b><small>conversas já importadas (serão atualizadas)</small></div>` : ''}
+      </div>
+      <div class="row" style="margin-top:4px">
+        <div style="max-width:320px"><label>Base de destino dos contatos</label><select id="cBase">${BASES.map(b => `<option value="${b.id}" ${hf && hf.id === b.id ? 'selected' : ''}>${esc(b.nome)}</option>`).join('')}<option value="nova" ${hf ? '' : 'selected'}>+ Nova base</option></select></div>
+        <div id="cNovaBox" style="max-width:320px;${hf ? 'display:none' : ''}"><label>Nome da nova base</label><input id="cNova" value="HyperFlow"></div>
+      </div>
+      <p class="muted">Todos os contatos do relatório entram nessa base. Quem não estava na central é cadastrado com o telefone e o nome do contato. Telefone que trocou mensagem passa a ser considerado útil e ganha prioridade no disparo.</p>
+      <div class="row" style="justify-content:flex-end"><div class="fit"><button class="btn sec" id="cCancelar">Cancelar</button></div><div class="fit"><button class="btn" id="cConfirmar">Confirmar importação</button></div></div>
+      <div class="prog" id="cProg" style="display:none"><i></i></div><div class="muted" id="cProgTxt"></div>`;
+    $('#cBase').onchange = () => { $('#cNovaBox').style.display = $('#cBase').value === 'nova' ? '' : 'none'; };
+    $('#cCancelar').onclick = () => { CONV = null; $('#cResumo').innerHTML = ''; $('#cDrop').style.display = ''; };
+    $('#cConfirmar').onclick = gravarConversas;
+    $('#cDrop').style.display = 'none';
+  } catch (e) { toast('Não consegui ler o relatório: ' + esc(e.message), 'err'); }
+  $('#cFile').value = '';
+});
+async function gravarConversas() {
+  if ($('#cBase').value === 'nova' && !$('#cNova').value.trim()) return toast('Dê um nome para a nova base.', 'err');
+  const btn = $('#cConfirmar'); btn.disabled = true; $('#cProg').style.display = '';
+  const bar = $('#cProg i'), txt = $('#cProgTxt'), L = CONV.lista, p = CONV.plano;
+  const total = L.length + p.lojistas.length + p.telefones.length + p.vinculos.length; let feito = 0;
+  const passo = (n, msg) => { feito += n; bar.style.width = (feito / total * 100).toFixed(1) + '%'; txt.textContent = msg; };
+  try {
+    const baseId = await baseDestino($('#cBase').value, $('#cNova').value);
+    const agora = new Date().toISOString();
+    for (const c of chunk(L, LOTE)) { await q(sb.from('cl_conversas').upsert(c.map(x => ({ ...x, importado_em: agora })), { onConflict: 'protocolo' })); passo(c.length, 'Gravando conversas…'); }
+    await gravarPlano(p, baseId, passo);
+    const confirmados = await q(sb.rpc('cl_confirmar_telefones'));
+    await q(sb.from('cl_importacoes').insert({ tipo: 'conversas', base_id: baseId, arquivo: CONV.arquivo, linhas: L.length, novos: p.novos, atualizados: p.atualizados, ignorados: 0, tel_inuteis: 0 }));
+    toast(`<b>${fmt(L.length)}</b> conversas importadas · <b>${fmt(p.novos)}</b> lojistas novos${confirmados ? ` · ${fmt(confirmados)} telefones confirmados como úteis` : ''}.`, 'ok');
+    CONV = null; $('#cResumo').innerHTML = ''; $('#cDrop').style.display = ''; histConversas(); kpis();
+  } catch (e) { toast('Erro ao gravar: ' + esc(e.message) + '. Pode confirmar de novo: nada duplica.', 'err'); btn.disabled = false; }
+}
+async function histConversas() {
+  await carregarBases();
+  const h = await q(sb.from('cl_importacoes').select('*').eq('tipo', 'conversas').order('created_at', { ascending: false }).limit(50));
+  $('#cHist').innerHTML = h.length ? `<table><thead><tr><th>Data</th><th>Arquivo</th><th>Base</th><th class="right">Conversas</th><th class="right">Lojistas novos</th><th class="right">Já na central</th></tr></thead><tbody>
+    ${h.map(i => `<tr><td>${dataBR(i.created_at)}</td><td>${esc(i.arquivo)}</td><td>${esc((BASES.find(b => b.id === i.base_id) || {}).nome || '—')}</td><td class="right mono">${fmt(i.linhas)}</td><td class="right mono">${fmt(i.novos)}</td><td class="right mono">${fmt(i.atualizados)}</td></tr>`).join('')}</tbody></table>`
+    : `<div class="empty">Nenhuma importação de conversas ainda.</div>`;
+}
+
+// ============================ LOJISTAS ============================
+let PAG = 0; const POR_PAG = 50; let buscaT;
+async function telaLojistas() {
+  await carregarBases();
+  const b = $('#fBase').value;
+  $('#fBase').innerHTML = `<option value="">Todas</option>` + BASES.map(x => `<option value="${x.id}" ${b == x.id ? 'selected' : ''}>${esc(x.nome)}</option>`).join('');
+  await opcoesRodada(); listar();
+}
+async function opcoesRodada() {
+  const b = $('#fBase').value, sel = $('#fRodada'), atual = sel.value;
+  if (!b) { sel.innerHTML = `<option value="">Todas</option>`; sel.disabled = true; return; }
+  const rs = (await q(sb.rpc('cl_resumo_bases'))).filter(r => r.base_id == b).sort((x, y) => x.rodada - y.rodada);
+  sel.innerHTML = `<option value="">Todas</option>` + rs.map(r => `<option value="${r.rodada}" ${atual === String(r.rodada) ? 'selected' : ''}>${r.rodada === 0 ? 'Nunca disparados' : r.rodada + 'x disparados'} (${fmt(+r.total)})</option>`).join('');
+  sel.disabled = false;
+}
+let REQ = 0;
+async function listar() {
+  const meu = ++REQ;
+  try {
+    $('#fRes').style.opacity = .5;
+    const v = id => $(id).value || null;
+    const L = await q(sb.rpc('cl_lojistas_lista', { p_busca: v('#fBusca'), p_base: v('#fBase') ? +v('#fBase') : null, p_rodada: v('#fRodada') !== null ? +v('#fRodada') : null,
+      p_doc: v('#fDoc'), p_tel: v('#fTel'), p_resp: v('#fResp'), p_limite: POR_PAG, p_offset: PAG * POR_PAG }));
+    if (meu !== REQ) return; // resposta antiga: uma busca mais nova já foi feita
+    const total = L.length ? +L[0].total : 0;
+    $('#fRes').innerHTML = L.length ? `<table><thead><tr><th>Nome</th><th>CPF/CNPJ</th><th>Telefone</th><th>Bases</th><th class="right">Disparos</th><th class="right">Respostas</th><th>Última resposta</th><th>Classificação</th></tr></thead><tbody>
+      ${L.map(l => `<tr class="click" data-id="${l.id}"><td>${esc(l.nome || '—')}</td>
+        <td class="mono">${l.documento ? fmtDoc(l.documento, l.tipo_doc) : '<span class="muted">—</span>'}</td>
+        <td class="mono">${fmtTel(l.telefone)}</td><td style="font-size:12px">${esc(l.bases || '')}</td>
+        <td class="right mono">${+l.disparos || '<span class="muted">0</span>'}</td>
+        <td class="right mono">${+l.conversas ? `${+l.respostas} <span class="muted">de ${+l.conversas}</span>` : '<span class="muted">—</span>'}</td>
+        <td>${l.ultima_resposta ? dataBR(l.ultima_resposta) : ''}</td><td style="font-size:12px">${esc(l.ultima_classificacao || '')}</td></tr>`).join('')}</tbody></table>`
+      : `<div class="empty">Nenhum lojista com esses filtros.</div>`;
+    const ini = total ? PAG * POR_PAG + 1 : 0, fim = Math.min(total, (PAG + 1) * POR_PAG);
+    $('#fPag').innerHTML = `<div class="muted">${total ? `${fmt(ini)}–${fmt(fim)} de <b style="color:var(--txt)">${fmt(total)}</b> lojistas` : ''}</div>
+      <div class="fit"><button class="btn sec" id="pgAnt" ${PAG ? '' : 'disabled'}>Anterior</button></div><div class="fit"><button class="btn sec" id="pgProx" ${fim < total ? '' : 'disabled'}>Próxima</button></div>`;
+    $('#pgAnt').onclick = () => { PAG--; listar(); }; $('#pgProx').onclick = () => { PAG++; listar(); };
+    $('#fRes').querySelectorAll('tr.click').forEach(tr => tr.onclick = () => abrirLojista(tr.dataset.id));
+  } catch (e) { toast('Erro na lista: ' + esc(e.message), 'err'); }
+  finally { $('#fRes').style.opacity = 1; }
+}
+['#fRodada', '#fDoc', '#fTel', '#fResp'].forEach(s => $(s).onchange = () => { PAG = 0; listar(); });
+$('#fBase').onchange = async () => { $('#fRodada').value = ''; PAG = 0; await opcoesRodada(); listar(); };
+$('#fBusca').oninput = () => { clearTimeout(buscaT); buscaT = setTimeout(() => { PAG = 0; listar(); }, 450); };
+$('#fBusca').onkeydown = e => { if (e.key === 'Enter') { clearTimeout(buscaT); PAG = 0; listar(); } };
+$('#fLimpar').onclick = async () => { ['#fBusca', '#fBase', '#fDoc', '#fTel', '#fResp'].forEach(s => $(s).value = ''); PAG = 0; await opcoesRodada(); listar(); };
+async function abrirLojista(id) {
+  const [l] = await q(sb.from('cl_lojistas').select('*').eq('id', id));
+  const tels = await q(sb.rpc('cl_telefones_qualidade', { p_lojista: id }));
+  const vb = await q(sb.from('cl_lojista_base').select('base_id,rodada,ultimo_disparo').eq('lojista_id', id));
+  const it = await q(sb.from('cl_lote_itens').select('telefone,cl_lotes(data,equipe,base_id,origem)').eq('lojista_id', id));
+  const nums = tels.map(t => t.numero).filter(Boolean);
+  const conv = nums.length ? await q(sb.from('cl_conversas').select('*').in('telefone', nums).order('criado_em', { ascending: false }).limit(50)) : [];
+  await carregarBases(); await carregarCampos();
+  const nb = bid => esc((BASES.find(b => b.id === bid) || {}).nome || '—');
+  const rot = k => esc((CAMPOS.find(c => c.chave === k) || {}).rotulo || k);
+  const campos = [['CPF/CNPJ', l.documento ? fmtDoc(l.documento, l.tipo_doc) + ` <span class="tag">${l.tipo_doc}</span>` : (l.doc_original ? `<span class="tag bad">inválido</span> ${esc(l.doc_original)}` : '<span class="muted">—</span>')],
+    ['Código cliente', esc(l.codigo_cliente)], ['Contato', esc(l.contato)], ['E-mail', esc(l.email)], ['Cadastro', dataBR(l.data_cadastro)], ['Última compra', dataBR(l.ultima_compra)], ['Situação', esc(l.situacao)], ['Vendedor', esc(l.vendedor)],
+    ...Object.entries(l.extras || {}).map(([k, v]) => [rot(k), /^https?:\/\//.test(v) ? `<a href="${esc(v)}" target="_blank" style="color:var(--acc)">abrir</a>` : esc(v)])].filter(([, v]) => v);
+  const resp = conv.filter(c => c.respondeu).length;
+  $('#drawer').innerHTML = `<button class="close" onclick="$('#drawer').classList.remove('on')">×</button><h2 style="margin-bottom:16px">${esc(l.nome || 'Sem nome')}</h2>
+    <div class="kv">${campos.map(([k, v]) => `<div>${k}</div><div>${v}</div>`).join('')}</div>
+    <h3>Telefones</h3><table><tbody>${tels.map(t => `<tr><td class="mono">${fmtTel(t.numero) || esc(t.numero_original)}${t.principal ? ' <span class="tag acc">principal</span>' : ''}<br><span class="muted" style="font-size:11.5px;font-family:inherit">${+t.conversas ? `respondeu ${+t.respostas} de ${+t.conversas} conversas${t.ultima_resposta ? ' · última ' + dataBR(t.ultima_resposta) : ''}` : 'sem conversas'}</span></td><td class="muted" style="font-size:12px">${t.numero_original && CL.so(t.numero_original) !== t.numero ? 'veio como ' + esc(t.numero_original) : ''}</td><td class="right"><button class="tag ${t.status === 'valido' ? 'ok' : 'bad'}" style="border:0;cursor:pointer" data-t="${t.id}" data-s="${t.status}" title="Clique para alterar">${t.status === 'valido' ? 'útil' : 'inútil'}</button></td></tr>`).join('') || '<tr><td class="muted">Nenhum</td></tr>'}</tbody></table>
+    <h3 style="margin-top:20px">Bases</h3><table><tbody>${vb.map(v => `<tr><td>${nb(v.base_id)}</td><td>${v.rodada ? `<span class="tag acc">${v.rodada}x disparado</span>` : '<span class="tag">nunca disparado</span>'}</td><td class="right muted">${v.ultimo_disparo ? 'último ' + dataBR(v.ultimo_disparo) : ''}</td></tr>`).join('')}</tbody></table>
+    <h3 style="margin-top:20px">Disparos</h3><table><tbody>${it.filter(x => x.cl_lotes).sort((a, b) => b.cl_lotes.data.localeCompare(a.cl_lotes.data)).map(x => `<tr><td>${dataBR(x.cl_lotes.data)}</td><td>${nb(x.cl_lotes.base_id)}</td><td>${x.cl_lotes.equipe}</td><td class="mono right">${fmtTel(x.telefone)}</td></tr>`).join('') || '<tr><td class="muted">Nenhum disparo</td></tr>'}</tbody></table>
+    <h3 style="margin-top:20px">Conversas no HyperFlow ${conv.length ? `<span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">· respondeu ${resp} de ${conv.length}</span>` : ''}</h3>
+    <table><tbody>${conv.map(c => `<tr><td>${dataBR(c.criado_em)}</td><td style="font-size:12px">${esc(c.departamento || '')}${c.agente && c.agente !== 'Bot' ? '<br><span class="muted">' + esc(c.agente) + '</span>' : ''}</td>
+      <td style="font-size:12px">${esc(c.classificacao || '')}</td><td class="right">${c.disparo ? '<span class="tag">disparo</span> ' : ''}${c.respondeu ? '<span class="tag ok">respondeu</span>' : '<span class="tag">sem resposta</span>'}</td></tr>`).join('') || '<tr><td class="muted">Nenhuma conversa importada</td></tr>'}</tbody></table>`;
+  $('#drawer').querySelectorAll('[data-t]').forEach(b => b.onclick = async () => {
+    try { await q(sb.from('cl_telefones').update({ status: b.dataset.s === 'valido' ? 'inutil' : 'valido' }).eq('id', +b.dataset.t)); abrirLojista(id); kpis(); } catch (e) { toast('Erro: ' + esc(e.message), 'err'); }
+  });
+  $('#drawer').classList.add('on');
+}
+document.addEventListener('keydown', e => e.key === 'Escape' && $('#drawer').classList.remove('on'));
+document.addEventListener('mousedown', e => { const d = $('#drawer'); if (d.classList.contains('on') && !d.contains(e.target) && !e.target.closest('tr.click')) d.classList.remove('on'); });
+
+// ============================ INÍCIO ============================
+kpis(); telaDisparo().catch(e => { $('#bases').innerHTML = `<div class="empty">Não consegui conectar ao banco: ${esc(e.message)}<br>Confira se o SQL da Central de Leads já foi rodado no Supabase.</div>`; });
+</script>
+</body>
+</html>
