@@ -106,7 +106,7 @@ tr.click{cursor:pointer}tr.click:hover td{background:#1b1f27}
   </div>
   <div class="card" style="margin-top:18px">
     <div class="row" style="align-items:center;margin-bottom:10px"><div><h3 style="margin:0">Vendedores e times</h3></div><div style="max-width:260px"><input id="vBusca" placeholder="Buscar vendedor"></div></div>
-    <p class="sub" style="margin:0 0 12px">Dono = vendedor da última compra, se ela tiver menos de 180 dias (até a planilha de carteirização chegar). Defina o time de cada vendedor para a regra entre times funcionar.</p>
+    <p class="sub" style="margin:0 0 12px">Dono = vendedor da última compra, se ela tiver menos de 180 dias (até a planilha de carteirização chegar). Defina o time de cada vendedor para a regra entre times funcionar. Quem não está mais na Avacy fica como <b>Desligado</b>: os clientes dele viram base livre. Em branco, os clientes ficam protegidos até você definir.</p>
     <div id="vLista" class="scroll" style="max-height:420px;overflow-y:auto"></div>
   </div>
 </section>
@@ -427,7 +427,7 @@ function desenharVendedores() {
   const b = CL.norm($('#vBusca').value || '');
   const L = VEND.filter(v => !b || CL.norm(v.nome).includes(b));
   $('#vLista').innerHTML = L.length ? `<table><thead><tr><th>Vendedor</th><th class="right">Clientes em carteira</th><th style="width:180px">Time</th></tr></thead><tbody>
-    ${L.map(v => `<tr><td>${esc(v.nome)}</td><td class="right mono">${fmt(+v.clientes)}</td><td><select data-v="${esc(v.nome)}" style="padding:5px 8px">${['', 'Closer', 'Developer', 'Farmer', 'Outro'].map(t => `<option value="${t}" ${(v.equipe || '') === t ? 'selected' : ''}>${t || '— definir —'}</option>`).join('')}</select></td></tr>`).join('')}</tbody></table>`
+    ${L.map(v => `<tr><td>${esc(v.nome)}</td><td class="right mono">${v.equipe === 'Desligado' ? '<span class="muted">' + fmt(+v.clientes) + ' → livres</span>' : fmt(+v.clientes)}</td><td><select data-v="${esc(v.nome)}" style="padding:5px 8px">${['', 'Closer', 'Developer', 'Farmer', 'RCA', 'Outro', 'Desligado'].map(t => `<option value="${t}" ${(v.equipe || '') === t ? 'selected' : ''}>${t || '— definir —'}</option>`).join('')}</select></td></tr>`).join('')}</tbody></table>`
     : `<div class="empty">Nenhum vendedor ainda. Eles aparecem quando a planilha de vendas é importada.</div>`;
   $('#vLista').querySelectorAll('select').forEach(s => s.onchange = async () => {
     try { await q(sb.from('cl_vendedores').update({ equipe: s.value || null }).eq('nome', s.dataset.v)); toast(`${esc(s.dataset.v)}: ${s.value || 'sem time'}.`, 'ok'); await telaDisparo(); }
