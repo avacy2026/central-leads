@@ -88,22 +88,26 @@ tr.click{cursor:pointer}tr.click:hover td{background:#1b1f27}
 
 <!-- ======================= DISPARO ======================= -->
 <section class="tab on" id="tab-disparo">
-  <h2>Bases para disparo</h2>
-  <p class="sub">Escolha a base. A central separa os lojistas da próxima rodada e marca o lote quando você baixa o arquivo.</p>
-  <div class="grid" id="bases"></div>
+  <h2>Disparo do dia</h2>
+  <p class="sub">A base é uma só. A central separa os lojistas pelo momento de compra e mostra quantos podem receber mensagem hoje, respeitando a cadência (7 dias, 15 dias, descanso de 60) e a carteira de cada time.</p>
+  <div id="fAviso"></div>
+  <div class="grid" id="momentos"></div>
   <div class="card" id="painel" style="display:none;margin-top:18px">
     <h3 id="pTitulo"></h3>
+    <p class="sub" id="pDesc" style="margin:-4px 0 14px"></p>
     <div class="row">
-      <div><label>Rodada</label><select id="pRodada"></select></div>
-      <div><label>Time</label><div class="seg" id="pEquipe"><button class="on">Closer</button><button>Developer</button><button>Farmer</button></div></div>
+      <div class="fit"><label>Time que recebe</label><div class="seg" id="pEquipe"><button>Closer</button><button>Developer</button><button>Farmer</button></div></div>
+      <div><label>Carteira</label><select id="pCarteira"></select></div>
       <div style="max-width:130px"><label>Quantidade</label><input id="pQtd" type="number" value="500" min="1"></div>
-    </div>
-    <div class="row" style="margin-top:14px">
-      <div><label>Ordem na planilha</label><div class="seg" id="pOrdem"><button class="on" data-v="1">Do fim para o início</button><button data-v="0">Do início para o fim</button></div></div>
-      <div style="max-width:300px"><label>Pular quem recebeu disparo de qualquer base nos últimos</label><select id="pDias"><option value="0">Não pular</option><option value="7">7 dias</option><option value="15" selected>15 dias</option><option value="30">30 dias</option><option value="60">60 dias</option></select></div>
       <div class="fit"><button class="btn" id="pGerar">Gerar lote</button></div>
     </div>
+    <p class="muted" style="font-size:12px;margin:10px 0 0">Cliente com dono só vai para o time do dono, a não ser que esteja em churn (180 dias ou mais sem compra).</p>
     <div id="previa"></div>
+  </div>
+  <div class="card" style="margin-top:18px">
+    <div class="row" style="align-items:center;margin-bottom:10px"><div><h3 style="margin:0">Vendedores e times</h3></div><div style="max-width:260px"><input id="vBusca" placeholder="Buscar vendedor"></div></div>
+    <p class="sub" style="margin:0 0 12px">Dono = vendedor da última compra, se ela tiver menos de 180 dias (até a planilha de carteirização chegar). Defina o time de cada vendedor para a regra entre times funcionar.</p>
+    <div id="vLista" class="scroll" style="max-height:420px;overflow-y:auto"></div>
   </div>
 </section>
 
@@ -383,69 +387,108 @@ document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
 });
 
 // ============================ DISPARO ============================
-let baseSel = null, resumo = {}, loteAtual = null;
+const MOMENTOS = [
+  { k: 'pre_churn', nome: 'Pré-churn', regra: '150 a 179 dias sem compra. Última chance antes do churn.', time: 'Developer', cor: 'var(--bad)' },
+  { k: 'recompra', nome: 'Hora da recompra', regra: 'Já passou do intervalo em que costuma comprar (60 dias para quem comprou uma vez).', time: 'Developer', cor: 'var(--warn)' },
+  { k: 'churn_recente', nome: 'Churn recente', regra: '180 a 365 dias sem compra.', time: 'Developer', cor: 'var(--r3)' },
+  { k: 'prospect_respondeu', nome: 'Prospect que respondeu', regra: 'Sem compra registrada, mas já respondeu no HyperFlow.', time: 'Closer', cor: 'var(--ok)' },
+  { k: 'churn_antigo', nome: 'Churn antigo', regra: 'Mais de 1 ano sem compra.', time: 'Developer', cor: 'var(--muted)' },
+  { k: 'prospect_frio', nome: 'Prospect frio', regra: 'Sem compra registrada e sem resposta.', time: 'Closer', cor: 'var(--muted)' },
+  { k: 'ativo', nome: 'Ativo no ciclo', regra: 'Ainda não chegou no intervalo de compra dele. Não dispara.', cor: 'var(--acc)' },
+];
+const nomeMomento = k => (MOMENTOS.find(m => m.k === k) || {}).nome || '';
+let momSel = null, RESUMO = {}, VEND = [], loteAtual = null;
 async function telaDisparo() {
-  await carregarBases();
-  const rs = await q(sb.rpc('cl_resumo_bases'));
-  const ult = await q(sb.from('cl_lotes').select('base_id,data').order('data', { ascending: false }).limit(1000));
-  resumo = {};
-  rs.forEach(r => { (resumo[r.base_id] ||= []).push(r); });
-  if (!BASES.length) { $('#bases').innerHTML = `<div class="empty">Nenhuma base ainda. Comece em <b>Importar base</b>.</div>`; $('#painel').style.display = 'none'; return; }
-  $('#bases').innerHTML = BASES.map(b => {
-    const rr = (resumo[b.id] || []).sort((a, c) => a.rodada - c.rodada);
-    const tot = rr.reduce((s, r) => s + +r.total, 0);
-    const u = ult.find(l => l.base_id === b.id);
-    const bar = rr.map(r => `<i style="width:${tot ? r.total / tot * 100 : 0}%;background:${COR(r.rodada)}"></i>`).join('');
-    const leg = rr.map(r => `<span style="--c:${COR(r.rodada)}">${r.rodada === 0 ? 'Nunca disparados' : r.rodada + 'x'}: ${fmt(+r.total)}</span>`).join('');
-    return `<div class="base ${baseSel === b.id ? 'on' : ''}" data-id="${b.id}"><div class="n">${esc(b.nome)}</div><div class="t">${fmt(tot)} lojistas · ${u ? 'último disparo ' + dataBR(u.data) : 'sem disparos'}</div><div class="bar">${bar}</div><div class="leg">${leg}</div></div>`;
+  const rs = await q(sb.rpc('cl_fila_resumo'));
+  RESUMO = Object.fromEntries(rs.map(r => [r.momento, r]));
+  $('#momentos').innerHTML = MOMENTOS.map((m, i) => {
+    const r = RESUMO[m.k] || { total: 0, elegiveis: 0, com_telefone: 0, em_cadencia: 0, sem_interesse: 0, elegiveis_com_dono: 0 };
+    const ativo = m.k === 'ativo';
+    return `<div class="base ${momSel === m.k ? 'on' : ''}" data-k="${m.k}" style="${ativo ? 'cursor:default;opacity:.75' : ''};border-top:3px solid ${m.cor}">
+      <div class="t" style="margin-bottom:6px">${ativo ? 'fora do disparo' : (i + 1) + 'º em prioridade'}</div>
+      <div class="n">${m.nome}</div><div class="t" style="min-height:34px">${m.regra}</div>
+      <div style="margin-top:10px;font-size:22px;font-weight:650" class="mono">${ativo ? fmt(+r.total) : fmt(+r.elegiveis)}</div>
+      <div class="t">${ativo ? 'lojistas comprando no ritmo deles' : `disponíveis hoje · de ${fmt(+r.total)} no momento`}</div>
+      ${ativo ? '' : `<div class="leg" style="margin-top:8px">${+r.em_cadencia ? `<span style="--c:var(--warn)">${fmt(+r.em_cadencia)} em cadência</span>` : ''}${+r.total - +r.com_telefone ? `<span style="--c:var(--bad)">${fmt(+r.total - +r.com_telefone)} sem telefone útil</span>` : ''}${+r.sem_interesse ? `<span style="--c:var(--muted)">${fmt(+r.sem_interesse)} sem interesse</span>` : ''}</div>`}
+    </div>`;
   }).join('');
-  document.querySelectorAll('.base').forEach(el => el.onclick = () => abrirBase(+el.dataset.id));
-  if (baseSel) abrirBase(baseSel);
+  document.querySelectorAll('#momentos .base').forEach(el => { if (el.dataset.k !== 'ativo') el.onclick = () => abrirMomento(el.dataset.k); });
+  await telaVendedores();
+  if (momSel) abrirMomento(momSel, true);
 }
-function abrirBase(id) {
-  baseSel = id; loteAtual = null; $('#previa').innerHTML = '';
-  document.querySelectorAll('.base').forEach(el => el.classList.toggle('on', +el.dataset.id === id));
-  const b = BASES.find(x => x.id === id), rr = (resumo[id] || []).sort((a, c) => a.rodada - c.rodada);
-  $('#pTitulo').textContent = 'Disparar · ' + b.nome;
-  const minR = (rr.find(r => +r.com_telefone > 0) || rr[0] || { rodada: 0 }).rodada;
-  $('#pRodada').innerHTML = rr.map(r => `<option value="${r.rodada}" ${r.rodada === minR ? 'selected' : ''}>${nomeRodada(r.rodada)} · ${fmt(+r.com_telefone)} com telefone útil</option>`).join('')
-    + (rr.length ? `<option value="${rr.at(-1).rodada + 1}">${nomeRodada(rr.at(-1).rodada + 1)} · ninguém ainda</option>` : '');
+async function telaVendedores() {
+  VEND = await q(sb.rpc('cl_vendedores_resumo'));
+  const semTime = VEND.filter(v => !v.equipe && +v.clientes > 0);
+  $('#fAviso').innerHTML = semTime.length ? `<div class="card" style="border-color:#5a4520;background:#221c12;padding:12px 16px">
+    <b style="color:var(--warn)">${fmt(semTime.reduce((s, v) => s + +v.clientes, 0))} clientes com dono</b> estão fora dos lotes porque ${semTime.length} vendedores ainda não têm time definido. Defina em <b>Vendedores e times</b>, no fim da página.</div>` : '';
+  desenharVendedores();
+}
+function desenharVendedores() {
+  const b = CL.norm($('#vBusca').value || '');
+  const L = VEND.filter(v => !b || CL.norm(v.nome).includes(b));
+  $('#vLista').innerHTML = L.length ? `<table><thead><tr><th>Vendedor</th><th class="right">Clientes em carteira</th><th style="width:180px">Time</th></tr></thead><tbody>
+    ${L.map(v => `<tr><td>${esc(v.nome)}</td><td class="right mono">${fmt(+v.clientes)}</td><td><select data-v="${esc(v.nome)}" style="padding:5px 8px">${['', 'Closer', 'Developer', 'Farmer', 'Outro'].map(t => `<option value="${t}" ${(v.equipe || '') === t ? 'selected' : ''}>${t || '— definir —'}</option>`).join('')}</select></td></tr>`).join('')}</tbody></table>`
+    : `<div class="empty">Nenhum vendedor ainda. Eles aparecem quando a planilha de vendas é importada.</div>`;
+  $('#vLista').querySelectorAll('select').forEach(s => s.onchange = async () => {
+    try { await q(sb.from('cl_vendedores').update({ equipe: s.value || null }).eq('nome', s.dataset.v)); toast(`${esc(s.dataset.v)}: ${s.value || 'sem time'}.`, 'ok'); await telaDisparo(); }
+    catch (e) { toast('Erro: ' + esc(e.message), 'err'); }
+  });
+}
+$('#vBusca').oninput = desenharVendedores;
+function opcoesCarteira() {
+  const t = segVal($('#pEquipe')).textContent, atual = $('#pCarteira').value;
+  const doTime = VEND.filter(v => v.equipe === t && +v.clientes > 0);
+  $('#pCarteira').innerHTML = `<option value="todas">Livres + carteira do ${t}</option><option value="livre">Só base livre</option>`
+    + (doTime.length ? `<optgroup label="Carteira de um vendedor (${t})">${doTime.map(v => `<option value="v:${esc(v.nome)}">${esc(v.nome)} (${fmt(+v.clientes)})</option>`).join('')}</optgroup>` : '');
+  if ([...$('#pCarteira').options].some(o => o.value === atual)) $('#pCarteira').value = atual;
+}
+function abrirMomento(k, manter) {
+  momSel = k; if (!manter) { loteAtual = null; $('#previa').innerHTML = ''; }
+  document.querySelectorAll('#momentos .base').forEach(el => el.classList.toggle('on', el.dataset.k === k));
+  const m = MOMENTOS.find(x => x.k === k), r = RESUMO[k] || {};
+  $('#pTitulo').textContent = 'Gerar lote · ' + m.nome;
+  $('#pDesc').innerHTML = `${m.regra} <b>${fmt(+r.elegiveis || 0)}</b> disponíveis hoje: ${fmt(+r.elegiveis_livres || 0)} na base livre e ${fmt(+r.elegiveis_com_dono || 0)} com dono.`;
+  if (!manter) $('#pEquipe').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.textContent === m.time));
+  opcoesCarteira();
   $('#painel').style.display = '';
+  if (!manter) $('#painel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
-seg($('#pEquipe')); seg($('#pOrdem'));
+seg($('#pEquipe'), () => { opcoesCarteira(); loteAtual = null; $('#previa').innerHTML = ''; });
 $('#pGerar').onclick = async () => {
-  const btn = $('#pGerar'); btn.disabled = true;
+  const btn = $('#pGerar'); btn.disabled = true; btn.textContent = 'Gerando…';
   try {
-    const qtd = Math.max(1, +$('#pQtd').value || 500);
-    const rows = await q(sb.rpc('cl_proximo_lote', { p_base: baseSel, p_rodada: +$('#pRodada').value, p_qtd: qtd, p_dias: +$('#pDias').value, p_desc: segVal($('#pOrdem')).dataset.v === '1' }));
+    const qtd = Math.max(1, +$('#pQtd').value || 500), equipe = segVal($('#pEquipe')).textContent, cv = $('#pCarteira').value;
+    const carteira = cv.startsWith('v:') ? 'vendedor' : cv, vendedor = cv.startsWith('v:') ? cv.slice(2) : null;
+    const rows = await q(sb.rpc('cl_fila_lote', { p_momento: momSel, p_time: equipe, p_carteira: carteira, p_vendedor: vendedor, p_qtd: qtd }));
     const vistos = new Set(), sel = [];
     for (const r of rows) { if (vistos.has(r.telefone)) continue; vistos.add(r.telefone); sel.push(r); if (sel.length >= qtd) break; }
-    const equipe = segVal($('#pEquipe')).textContent, b = BASES.find(x => x.id === baseSel);
     const d = hoje(), suf = { Closer: '', Developer: '_Dev', Farmer: '_Farmer' }[equipe];
-    const arquivo = `Disparo_Ativo_${b.nome.normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^\w]+/g, '_')}${suf}_${d.slice(8,10)}-${d.slice(5,7)}.xlsx`;
-    loteAtual = { sel, equipe, arquivo, base: baseSel, rodada: +$('#pRodada').value };
-    if (!sel.length) { $('#previa').innerHTML = `<div class="empty">Ninguém disponível nesta rodada com esses filtros.</div>`; return; }
+    const arquivo = `Disparo_Ativo_${nomeMomento(momSel).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w]+/g, '_')}${suf}_${d.slice(8, 10)}-${d.slice(5, 7)}.xlsx`;
+    loteAtual = { sel, equipe, arquivo, momento: momSel, carteira: vendedor ? 'vendedor: ' + vendedor : carteira };
+    if (!sel.length) { $('#previa').innerHTML = `<div class="empty">Ninguém disponível hoje com esses filtros.</div>`; return; }
+    const comDono = sel.filter(r => r.dono).length;
     $('#previa').innerHTML = `
-      <div class="stats"><div class="stat"><b>${fmt(sel.length)}</b><small>lojistas no lote</small></div><div class="stat"><b>${equipe}</b><small>time</small></div><div class="stat"><b>${nomeRodada(loteAtual.rodada)}</b><small>rodada</small></div></div>
-      ${sel.length < qtd ? `<p class="muted">Só ${fmt(sel.length)} disponíveis com esses filtros.</p>` : ''}
-      <div class="scroll"><table><thead><tr><th>id</th><th>nome</th><th>CPF/CNPJ</th></tr></thead><tbody>
-      ${sel.slice(0, 8).map(r => `<tr><td class="mono">${r.telefone}</td><td>${esc(r.nome)}</td><td class="mono">${r.documento || '<span class="muted">sem documento</span>'}</td></tr>`).join('')}
-      ${sel.length > 8 ? `<tr><td colspan="3" class="muted">+ ${fmt(sel.length - 8)} lojistas</td></tr>` : ''}</tbody></table></div>
+      <div class="stats"><div class="stat"><b>${fmt(sel.length)}</b><small>lojistas no lote</small></div><div class="stat"><b>${equipe}</b><small>time</small></div>
+        <div class="stat"><b>${fmt(comDono)}</b><small>com vendedor dono</small></div><div class="stat"><b>${fmt(sel.filter(r => r.respondeu).length)}</b><small>já responderam antes</small></div></div>
+      ${sel.length < qtd ? `<p class="muted">Só ${fmt(sel.length)} disponíveis hoje com esses filtros.</p>` : ''}
+      <div class="scroll"><table><thead><tr><th>id</th><th>nome</th><th>CPF/CNPJ</th><th>vendedor</th><th class="right">Dias sem compra</th></tr></thead><tbody>
+      ${sel.slice(0, 8).map(r => `<tr><td class="mono">${r.telefone}</td><td>${esc(r.nome)}</td><td class="mono">${r.documento || '<span class="muted">—</span>'}</td><td style="font-size:12px">${esc(r.dono || '')}${r.dono && r.dono_time ? ` <span class="muted">${r.dono_time}</span>` : ''}</td><td class="right mono">${r.dias ?? '<span class="muted">—</span>'}</td></tr>`).join('')}
+      ${sel.length > 8 ? `<tr><td colspan="5" class="muted">+ ${fmt(sel.length - 8)} lojistas</td></tr>` : ''}</tbody></table></div>
       <div class="row" style="margin-top:14px;justify-content:flex-end;align-items:center"><div class="muted" style="flex:1">${esc(arquivo)}</div><div class="fit"><button class="btn" id="pBaixar">Baixar e registrar lote</button></div></div>`;
     $('#pBaixar').onclick = baixarLote;
   } catch (e) { toast('Erro ao gerar: ' + esc(e.message), 'err'); }
-  finally { btn.disabled = false; }
+  finally { btn.disabled = false; btn.textContent = 'Gerar lote'; }
 };
 async function baixarLote() {
   const L = loteAtual; if (!L) return; $('#pBaixar').disabled = true;
   try {
     const itens = L.sel.map(r => ({ lojista_id: r.lojista_id, telefone: r.telefone }));
-    await q(sb.rpc('cl_registrar_lote', { p_base: L.base, p_equipe: L.equipe, p_data: hoje(), p_arquivo: L.arquivo, p_origem: 'central', p_itens: itens }));
-    const aoa = [['id', 'telefone', 'nome', 'cnpj_cpf'], ...L.sel.map(r => [r.telefone, r.telefone, r.nome || '', r.documento || ''])];
+    await q(sb.rpc('cl_registrar_lote_fila', { p_momento: L.momento, p_equipe: L.equipe, p_carteira: L.carteira, p_data: hoje(), p_arquivo: L.arquivo, p_itens: itens }));
+    const aoa = [['id', 'telefone', 'nome', 'cnpj_cpf', 'vendedor'], ...L.sel.map(r => [r.telefone, r.telefone, r.nome || '', r.documento || '', r.dono || ''])];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     Object.keys(ws).forEach(k => { if (k[0] !== '!' && ws[k].t === 'n') { ws[k].t = 's'; ws[k].v = String(ws[k].v); } });
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Planilha1'); XLSX.writeFile(wb, L.arquivo);
-    toast(`Lote registrado: <b>${fmt(L.sel.length)}</b> lojistas.`, 'ok');
+    toast(`Lote registrado: <b>${fmt(L.sel.length)}</b> lojistas. Eles entram na cadência a partir de hoje.`, 'ok');
     loteAtual = null; $('#previa').innerHTML = ''; telaDisparo(); kpis();
   } catch (e) { toast('Erro ao registrar: ' + esc(e.message), 'err'); $('#pBaixar').disabled = false; }
 }
@@ -729,7 +772,7 @@ async function gravar() {
     await gravarPlano(p, baseId, passo);
     if (C) {
       for (const c of chunk(C.lista, 1000)) { await q(sb.from('cl_compras').upsert(c, { onConflict: 'chave', ignoreDuplicates: true })); passo(c.length, 'Gravando compras…'); }
-      for (const c of chunk(idsC, 1000)) { await q(sb.rpc('cl_atualizar_metricas', { p_ids: c })); passo(c.length, 'Calculando a rotina de compra…'); }
+      for (const c of chunk(idsC, 1000)) { await q(sb.rpc('cl_atualizar_metricas_e_vendedores', { p_ids: c })); passo(c.length, 'Calculando a rotina de compra…'); }
     }
     // aprende os nomes de coluna para a próxima importação
     for (const m of IMP.mapa.filter(m => m.campo)) {
@@ -842,8 +885,8 @@ async function telaLotes() {
   const atual = $('#lBase').value;
   $('#lBase').innerHTML = `<option value="">Todas as bases</option>` + BASES.map(b => `<option value="${b.id}" ${atual == b.id ? 'selected' : ''}>${esc(b.nome)}</option>`).join('');
   const L = await q(sb.rpc('cl_lotes_lista', { p_base: $('#lBase').value ? +$('#lBase').value : null, p_limite: 300 }));
-  $('#lTabela').innerHTML = L.length ? `<table><thead><tr><th>Data</th><th>Base</th><th>Time</th><th class="right">Lojistas</th><th class="right">Respostas</th><th class="right">Taxa</th><th>Origem</th><th>Arquivo</th><th></th></tr></thead><tbody>
-    ${L.map(l => `<tr><td>${dataBR(l.data)}</td><td>${esc((BASES.find(b => b.id === l.base_id) || {}).nome || '—')}</td><td>${l.equipe}</td>
+  $('#lTabela').innerHTML = L.length ? `<table><thead><tr><th>Data</th><th>Base / momento</th><th>Time</th><th class="right">Lojistas</th><th class="right">Respostas</th><th class="right">Taxa</th><th>Origem</th><th>Arquivo</th><th></th></tr></thead><tbody>
+    ${L.map(l => `<tr><td>${dataBR(l.data)}</td><td>${l.momento ? `<span class="tag acc">${esc(nomeMomento(l.momento))}</span>` : esc((BASES.find(b => b.id === l.base_id) || {}).nome || '—')}</td><td>${l.equipe}</td>
       <td class="right mono">${fmt(l.quantidade)}${l.nao_encontrados ? `<br><span class="muted" style="font-size:11.5px">${fmt(l.nao_encontrados)} linhas sem telefone/CPF</span>` : ''}</td>
       ${l.com_historico ? `<td class="right mono">${fmt(+l.respostas)}</td><td class="right mono"><b>${l.quantidade ? (l.respostas / l.quantidade * 100).toFixed(1) + '%' : ''}</b></td>` : `<td class="right muted" colspan="2" style="font-size:12px">sem conversas do período</td>`}
       <td><span class="tag ${l.origem === 'central' ? 'acc' : ''}">${l.origem === 'central' ? 'central' : 'importado'}</span></td>
@@ -1009,6 +1052,15 @@ $('#fBase').onchange = async () => { $('#fRodada').value = ''; PAG = 0; await op
 $('#fBusca').oninput = () => { clearTimeout(buscaT); buscaT = setTimeout(() => { PAG = 0; listar(); }, 450); };
 $('#fBusca').onkeydown = e => { if (e.key === 'Enter') { clearTimeout(buscaT); PAG = 0; listar(); } };
 $('#fLimpar').onclick = async () => { ['#fBusca', '#fBase', '#fDoc', '#fTel', '#fResp'].forEach(s => $(s).value = ''); PAG = 0; await opcoesRodada(); listar(); };
+function linhaFila(f) {
+  if (!f) return '<div style="margin-bottom:16px"></div>';
+  const st = f.momento === 'ativo' ? '<span class="tag">comprando no ritmo dele, fora do disparo</span>'
+    : f.sem_interesse ? '<span class="tag bad">marcou sem interesse (pausa de 90 dias)</span>'
+    : f.elegivel ? '<span class="tag ok">disponível para disparo hoje</span>'
+    : f.liberado_em && f.liberado_em > hoje() ? `<span class="tag warn">${f.toques % 3 === 0 ? 'descansando' : 'em cadência'} até ${dataBR(f.liberado_em)} · ${f.toques} ${f.toques === 1 ? 'toque' : 'toques'} desde a última compra</span>`
+    : '<span class="tag bad">sem telefone útil</span>';
+  return `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px"><span class="tag acc">${esc(nomeMomento(f.momento))}</span>${st}${f.dono ? `<span class="tag">dono: ${esc(f.dono)}${f.dono_time ? ' · ' + f.dono_time : ''}</span>` : ''}</div>`;
+}
 const diasDesde = d => d ? Math.round((Date.parse(hoje()) - Date.parse(d)) / 864e5) : null;
 const brl = v => v == null ? '' : Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
 function carteiraDe(m) {
@@ -1036,6 +1088,7 @@ async function abrirLojista(id) {
   const tels = await q(sb.rpc('cl_telefones_qualidade', { p_lojista: id }));
   const [met] = await q(sb.from('cl_metricas').select('*').eq('lojista_id', id));
   const comp = met ? await q(sb.rpc('cl_compras_lojista', { p_lojista: id, p_limite: 12 })) : [];
+  const [fila] = await q(sb.rpc('cl_fila_lojista', { p_lojista: id }));
   const vb = await q(sb.from('cl_lojista_base').select('base_id,rodada,ultimo_disparo').eq('lojista_id', id));
   const it = await q(sb.from('cl_lote_itens').select('telefone,cl_lotes(data,equipe,base_id,origem)').eq('lojista_id', id));
   const nums = tels.map(t => t.numero).filter(Boolean);
@@ -1047,7 +1100,7 @@ async function abrirLojista(id) {
     ['Código cliente', esc(l.codigo_cliente)], ['Contato', esc(l.contato)], ['E-mail', esc(l.email)], ['Cadastro', dataBR(l.data_cadastro)], ['Última compra', dataBR(l.ultima_compra)], ['Situação', esc(l.situacao)], ['Vendedor', esc(l.vendedor)],
     ...Object.entries(l.extras || {}).map(([k, v]) => [rot(k), /^https?:\/\//.test(v) ? `<a href="${esc(v)}" target="_blank" style="color:var(--acc)">abrir</a>` : esc(v)])].filter(([, v]) => v);
   const resp = conv.filter(c => c.respondeu).length;
-  $('#drawer').innerHTML = `<button class="close" onclick="$('#drawer').classList.remove('on')">×</button><h2 style="margin-bottom:16px">${esc(l.nome || 'Sem nome')}</h2>
+  $('#drawer').innerHTML = `<button class="close" onclick="$('#drawer').classList.remove('on')">×</button><h2 style="margin-bottom:8px">${esc(l.nome || 'Sem nome')}</h2>${linhaFila(fila)}
     <div class="kv">${campos.map(([k, v]) => `<div>${k}</div><div>${v}</div>`).join('')}</div>
     ${blocoCompras(l, met, comp)}
     <h3>Telefones</h3><table><tbody>${tels.map(t => `<tr><td class="mono">${fmtTel(t.numero) || esc(t.numero_original)}${t.principal ? ' <span class="tag acc">principal</span>' : ''}<br><span class="muted" style="font-size:11.5px;font-family:inherit">${+t.conversas ? `respondeu ${+t.respostas} de ${+t.conversas} conversas${t.ultima_resposta ? ' · última ' + dataBR(t.ultima_resposta) : ''}` : 'sem conversas'}</span></td><td class="muted" style="font-size:12px">${t.numero_original && CL.so(t.numero_original) !== t.numero ? 'veio como ' + esc(t.numero_original) : ''}</td><td class="right"><button class="tag ${t.status === 'valido' ? 'ok' : 'bad'}" style="border:0;cursor:pointer" data-t="${t.id}" data-s="${t.status}" title="Clique para alterar">${t.status === 'valido' ? 'útil' : 'inútil'}</button></td></tr>`).join('') || '<tr><td class="muted">Nenhum</td></tr>'}</tbody></table>
@@ -1065,7 +1118,7 @@ document.addEventListener('keydown', e => e.key === 'Escape' && $('#drawer').cla
 document.addEventListener('mousedown', e => { const d = $('#drawer'); if (d.classList.contains('on') && !d.contains(e.target) && !e.target.closest('tr.click')) d.classList.remove('on'); });
 
 // ============================ INÍCIO ============================
-kpis(); telaDisparo().catch(e => { $('#bases').innerHTML = `<div class="empty">Não consegui conectar ao banco: ${esc(e.message)}<br>Confira se o SQL da Central de Leads já foi rodado no Supabase.</div>`; });
+kpis(); telaDisparo().catch(e => { $('#momentos').innerHTML = `<div class="empty">Não consegui conectar ao banco: ${esc(e.message)}<br>Confira se o SQL da Central de Leads já foi rodado no Supabase.</div>`; });
 </script>
 </body>
 </html>
