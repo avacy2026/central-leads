@@ -110,12 +110,13 @@ tr.click{cursor:pointer}tr.click:hover td{background:#1b1f27}
 <!-- ======================= IMPORTAR ======================= -->
 <section class="tab" id="tab-importar">
   <h2>Importar base</h2>
-  <p class="sub">Suba a planilha, diga o que é cada coluna e confirme. Quem já existe é completado, sem duplicar.</p>
+  <p class="sub">Suba a planilha, diga o que é cada coluna e confirme. Quem já existe é completado, sem duplicar. Planilhas de vendas guardam cada compra e recalculam a rotina de compra de cada lojista.</p>
   <div class="card">
     <label class="drop" id="iDrop"><input type="file" id="iFile" accept=".xlsx,.xls,.csv"><b>Arraste a planilha aqui</b><br>ou clique para escolher (.xlsx, .xls, .csv)</label>
     <div id="iEtapa2" style="display:none;margin-top:18px">
       <div class="row">
         <div><label>Arquivo</label><input id="iNomeArq" disabled></div>
+        <div class="fit"><label>Tipo de planilha</label><div class="seg" id="iTipo"><button data-v="clientes" class="on">Clientes</button><button data-v="vendas">Vendas</button></div></div>
         <div id="iAbaBox"><label>Aba</label><select id="iAba"></select></div>
         <div><label>Base de destino</label><select id="iBase"></select></div>
         <div id="iNovaBaseBox" style="display:none"><label>Nome da nova base</label><input id="iNovaBase" placeholder="Ex.: Churn"></div>
@@ -471,6 +472,15 @@ function dropzone(el, input, cb) {
 
 // ============================ IMPORTAR ============================
 let IMP = null;
+const VENDA_CAMPOS = [
+  { chave: 'venda_data', rotulo: 'Data da compra', apelidos: ['data_fat', 'data fat', 'data faturamento', 'data_faturamento', 'dt_fat', 'emissao', 'data emissao', 'data da venda', 'data_venda', 'data compra'] },
+  { chave: 'venda_valor', rotulo: 'Valor da compra', apelidos: ['faturamento', 'valor', 'valor_total', 'valor total', 'vlr_total', 'total', 'valor da venda'] },
+  { chave: 'venda_pares', rotulo: 'Pares / quantidade', apelidos: ['qtd', 'quantidade', 'pares', 'qtd_pares', 'qtde'] },
+  { chave: 'venda_vendedor_cod', rotulo: 'Código do vendedor', apelidos: ['cod_vendedor', 'codigo vendedor', 'cod vendedor', 'codigo_vendedor'] },
+  { chave: 'venda_vendedor', rotulo: 'Vendedor da venda', apelidos: ['nome_vendedor', 'nome vendedor', 'vendedor'] },
+];
+const tipoImp = () => segVal($('#iTipo')).dataset.v;
+seg($('#iTipo'), () => IMP && montarMapa());
 dropzone($('#iDrop'), $('#iFile'), async ([f]) => {
   try {
     await carregarCampos(); await carregarBases();
@@ -483,6 +493,9 @@ dropzone($('#iDrop'), $('#iFile'), async ([f]) => {
     const palpite = BASES.find(b => f.name.toLowerCase().replace(/[_\s-]/g, '').includes(b.nome.toLowerCase().replace(/[_\s-]/g, '')));
     $('#iBase').innerHTML = `<option value="">Escolha…</option>` + BASES.map(b => `<option value="${b.id}" ${palpite && palpite.id === b.id ? 'selected' : ''}>${esc(b.nome)}</option>`).join('') + `<option value="nova">+ Nova base</option>`;
     $('#iNovaBaseBox').style.display = 'none';
+    const { cols: c0 } = linhasDaAba(wb, abas[0] || wb.SheetNames[0]);
+    const sv = CL.sugerir(c0, VENDA_CAMPOS), ehVenda = sv.includes('venda_data') && sv.includes('venda_valor');
+    $('#iTipo').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.v === (ehVenda ? 'vendas' : 'clientes')));
     montarMapa(); $('#iEtapa2').style.display = ''; $('#iResumo').innerHTML = ''; $('#iDrop').style.display = 'none';
   } catch (e) { toast('Não consegui ler o arquivo: ' + esc(e.message), 'err'); }
   $('#iFile').value = '';
@@ -492,12 +505,17 @@ $('#iBase').onchange = () => { $('#iNovaBaseBox').style.display = $('#iBase').va
 $('#iCancelar').onclick = resetImport;
 function resetImport() { IMP = null; $('#iEtapa2').style.display = 'none'; $('#iDrop').style.display = ''; $('#iResumo').innerHTML = ''; }
 function opcoesCampo(sel) {
-  return `<option value="">— ignorar —</option>` + CAMPOS.map(c => `<option value="${esc(c.chave)}" ${c.chave === sel ? 'selected' : ''}>${esc(c.rotulo)}${c.padrao ? '' : ' ·'}</option>`).join('') + `<option value="__novo">+ Novo campo…</option>`;
+  const loj = CAMPOS.map(c => `<option value="${esc(c.chave)}" ${c.chave === sel ? 'selected' : ''}>${esc(c.rotulo)}${c.padrao ? '' : ' ·'}</option>`).join('');
+  const ven = VENDA_CAMPOS.map(c => `<option value="${c.chave}" ${c.chave === sel ? 'selected' : ''}>${esc(c.rotulo)}</option>`).join('');
+  return `<option value="">— ignorar —</option>`
+    + (tipoImp() === 'vendas' ? `<optgroup label="Dados da venda">${ven}</optgroup><optgroup label="Dados do lojista">${loj}</optgroup>` : loj)
+    + `<option value="__novo">+ Novo campo…</option>`;
 }
 function montarMapa() {
   const { rows, cols } = linhasDaAba(IMP.wb, $('#iAba').value);
   IMP.rows = rows; IMP.cols = cols;
-  const sug = CL.sugerir(cols, CAMPOS);
+  const vendas = tipoImp() === 'vendas';
+  const sug = CL.sugerir(cols, vendas ? [...VENDA_CAMPOS, ...CAMPOS.filter(c => c.chave !== 'ultima_compra' && c.chave !== 'vendedor')] : CAMPOS);
   $('#iMapa').innerHTML = cols.map((c, i) => {
     const ex = rows.slice(0, 3).map(r => r[c] instanceof Date ? r[c].toISOString().slice(0,10) : CL.txt(r[c])).filter(Boolean).join(' · ');
     return `<tr><td>${esc(c)}</td><td class="ex" title="${esc(ex)}">${esc(ex) || '<span class="muted">vazio</span>'}</td><td><select data-i="${i}">${opcoesCampo(sug[i])}</select></td></tr>`;
@@ -525,13 +543,49 @@ $('#iAnalisar').onclick = async () => {
   const mapa = [...$('#iMapa').querySelectorAll('select')].map(s => ({ coluna: IMP.cols[+s.dataset.i], campo: s.value === '__novo' ? '' : s.value }));
   if (!mapa.some(m => m.campo === 'telefone') && !mapa.some(m => m.campo === 'documento')) return toast('Indique pelo menos a coluna de telefone ou de CPF/CNPJ.', 'err');
   if ($('#iBase').value === '' || ($('#iBase').value === 'nova' && !$('#iNovaBase').value.trim())) return toast('Escolha a base de destino.', 'err');
+  const vendas = tipoImp() === 'vendas';
+  if (vendas && !mapa.some(m => m.campo === 'venda_data')) return toast('Indique a coluna com a data da compra.', 'err');
   const btn = $('#iAnalisar'); btn.disabled = true; btn.textContent = 'Analisando…';
-  try { IMP.mapa = mapa; IMP.plano = await planejar(IMP.rows, mapa, { baseId: +$('#iBase').value || null }); mostrarPlano(); }
+  try {
+    IMP.mapa = mapa; IMP.tipo = vendas ? 'vendas' : 'base';
+    const mapaLoj = mapa.map(m => (m.campo.startsWith('venda_') ? { ...m, campo: '' } : m));
+    IMP.plano = await planejar(IMP.rows, mapaLoj, { baseId: +$('#iBase').value || null });
+    IMP.compras = vendas ? montarCompras(IMP.rows, mapa, IMP.plano) : null;
+    mostrarPlano();
+  }
   catch (e) { toast('Erro na análise: ' + esc(e.message), 'err'); }
   finally { btn.disabled = false; btn.textContent = 'Analisar'; }
 };
 
-// Agrupa as linhas da planilha em lojistas e cruza com o banco
+// Transforma cada linha da planilha de vendas numa compra ligada ao lojista
+function numeroBR(v) {
+  if (typeof v === 'number') return v;
+  let s = String(v ?? '').trim().replace(/[R$\s]/g, '');
+  if (!s) return null;
+  if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
+  const n = Number(s); return isFinite(n) ? n : null;
+}
+function montarCompras(rows, mapa, plano) {
+  const col = k => (mapa.find(m => m.campo === k) || {}).coluna;
+  const cData = col('venda_data'), cValor = col('venda_valor'), cPares = col('venda_pares'), cVCod = col('venda_vendedor_cod'), cVNome = col('venda_vendedor');
+  const cDoc = col('documento'), cCod = col('codigo_cliente'), cTel = col('telefone'), cNome = col('nome');
+  const vistas = new Map(), lista = []; let semData = 0, semLojista = 0;
+  rows.forEach((r, i) => {
+    const id = plano.linhaId[i]; if (!id) { semLojista++; return; }
+    const data = CL.data(r[cData]); if (!data) { semData++; return; }
+    const valor = cValor ? numeroBR(r[cValor]) : null;
+    const pares = cPares ? Math.round(numeroBR(r[cPares]) ?? 0) || null : null;
+    const vcod = cVCod ? CL.txt(r[cVCod]) : '', vnome = cVNome ? CL.txt(r[cVNome]) : '';
+    const ident = (cDoc && CL.so(r[cDoc])) || (cCod && CL.txt(r[cCod]) && 'cod' + CL.txt(r[cCod]))
+      || ((cTel || cNome) && `t${cTel ? CL.so(r[cTel]) : ''}|${cNome ? CL.norm(r[cNome]) : ''}`) || id;
+    const base = [ident, data, valor == null ? '' : valor.toFixed(2), pares ?? '', vcod || vnome].join('|');
+    const n = (vistas.get(base) || 0) + 1; vistas.set(base, n);   // mesma venda repetida na planilha = notas diferentes
+    lista.push({ lojista_id: id, data, valor, pares, vendedor_cod: vcod || null, vendedor: vnome || null, chave: base + '#' + n });
+  });
+  const datas = lista.map(c => c.data).sort();
+  return { lista, semData, semLojista, clientes: new Set(lista.map(c => c.lojista_id)).size, de: datas[0], ate: datas.at(-1) };
+}
+
 // Agrupa as linhas de qualquer planilha em lojistas, cruza com o banco e devolve o plano de gravação.
 //   opts.baseId: base de destino (prefere lojistas dela quando um telefone é compartilhado)
 //   opts.vincularExistentes: false = só os lojistas novos entram na base (usado nos arquivos de disparo)
@@ -541,10 +595,12 @@ async function planejar(rows, mapa, opts = {}) {
   const vincularExistentes = opts.vincularExistentes !== false;
   const regs = rows.map((r, i) => ({ ...CL.linha(r, mapa), ordem: i + 1, bruto: r }));
   // 1) agrupa dentro do arquivo: documento primeiro, depois telefone
-  const grupos = [], porDoc = new Map(), porTel = new Map();
+  const grupos = [], porDoc = new Map(), porTel = new Map(), porCod = new Map();
   let ignorados = 0;
   for (const r of regs) {
     let g = r.doc ? porDoc.get(r.doc.documento) : null;
+    const cod = r.campos.codigo_cliente || null;
+    if (!g && !r.doc && cod) g = porCod.get(cod);
     const uteis = r.telefones.filter(t => t.status === 'valido');
     if (!g && !r.doc) for (const t of uteis) { const x = porTel.get(t.numero); if (x) { g = x; break; } }
     if (!g && r.doc) for (const t of uteis) { const x = porTel.get(t.numero); if (x && !x.doc) { g = x; break; } }
@@ -555,9 +611,10 @@ async function planejar(rows, mapa, opts = {}) {
     }
     r.g = g;
     if (r.doc && !g.doc) { g.doc = r.doc; porDoc.set(r.doc.documento, g); }
+    if (cod && !porCod.has(cod)) porCod.set(cod, g);
     if (r.docOriginal && !g.docOriginal) g.docOriginal = r.docOriginal;
     for (const t of r.telefones) { if (!g.telefones.some(x => x.numero === t.numero)) g.telefones.push(t); if (t.status === 'valido' && !porTel.has(t.numero)) porTel.set(t.numero, g); }
-    for (const [k, v] of Object.entries(r.campos)) if (!g.campos[k]) g.campos[k] = v;
+    for (const [k, v] of Object.entries(r.campos)) if (!g.campos[k] || (k === 'ultima_compra' && v > g.campos[k])) g.campos[k] = v;
     for (const [k, v] of Object.entries(r.extras)) if (!g.extras[k]) g.extras[k] = v;
   }
   // 2) busca no banco quem já existe (por documento e por telefone)
@@ -566,6 +623,9 @@ async function planejar(rows, mapa, opts = {}) {
   const tels = [...new Set(grupos.flatMap(g => g.telefones.map(numeroDe)).filter(Boolean))];
   const exist = new Map(), docMap = new Map(), telMap = new Map();
   for (const c of chunk(docs, 200)) (await q(sb.from('cl_lojistas').select('*').in('documento', c))).forEach(l => { exist.set(l.id, l); docMap.set(l.documento, l.id); });
+  // código do cliente (ERP): identifica quem não tem CPF/CNPJ na planilha
+  const cods = [...new Set(grupos.filter(g => !g.doc && g.campos.codigo_cliente).map(g => g.campos.codigo_cliente))], codMap = new Map();
+  for (const c of chunk(cods, 200)) (await q(sb.from('cl_lojistas').select('*').in('codigo_cliente', c))).forEach(l => { exist.set(l.id, l); (codMap.get(l.codigo_cliente) || codMap.set(l.codigo_cliente, new Set()).get(l.codigo_cliente)).add(l.id); });
   for (const c of chunk(tels, 200)) (await q(sb.from('cl_telefones').select('lojista_id,numero').in('numero', c))).forEach(t => { (telMap.get(t.numero) || telMap.set(t.numero, new Set()).get(t.numero)).add(t.lojista_id); });
   const faltam = [...new Set([...telMap.values()].flatMap(s => [...s]))].filter(id => !exist.has(id));
   for (const c of chunk(faltam, 200)) (await q(sb.from('cl_lojistas').select('*').in('id', c))).forEach(l => exist.set(l.id, l));
@@ -577,6 +637,9 @@ async function planejar(rows, mapa, opts = {}) {
   const agora = new Date().toISOString();
   for (const g of grupos) {
     let id = g.doc ? docMap.get(g.doc.documento) : null;
+    if (!id && !g.doc && g.campos.codigo_cliente) { // 0) mesmo código de cliente, se só um lojista tiver
+      const s = codMap.get(g.campos.codigo_cliente); if (s && s.size === 1) id = [...s][0];
+    }
     if (!id) { // 1) telefone útil que pertence a um único lojista
       for (const t of g.telefones.filter(t => t.status === 'valido')) {
         const s = telMap.get(t.numero); if (!s || s.size !== 1) continue;
@@ -609,7 +672,7 @@ async function planejar(rows, mapa, opts = {}) {
     g.recId = rec.id;
     if (g.doc && !rec.documento) { rec.documento = g.doc.documento; rec.tipo_doc = g.doc.tipo; }
     if (g.docOriginal && !rec.documento && !rec.doc_original) rec.doc_original = g.docOriginal;
-    for (const [k, v] of Object.entries(g.campos)) if (!rec[k]) rec[k] = v;
+    for (const [k, v] of Object.entries(g.campos)) if (!rec[k] || (k === 'ultima_compra' && v > rec[k])) rec[k] = v;
     rec.extras = { ...(rec.extras || {}) };
     for (const [k, v] of Object.entries(g.extras)) if (!rec.extras[k]) rec.extras[k] = v;
     for (const t of g.telefones) {
@@ -643,6 +706,12 @@ function mostrarPlano() {
       <div class="stat"><b style="color:var(--warn)">${fmt(p.semTelUtil)}</b><small>sem telefone útil</small></div>
       ${p.ignorados ? `<div class="stat"><b style="color:var(--bad)">${fmt(p.ignorados)}</b><small>sem telefone nem documento (ignoradas)</small></div>` : ''}
     </div>
+    ${IMP.compras ? `<h3 style="margin-top:6px">Compras</h3><div class="stats">
+      <div class="stat"><b>${fmt(IMP.compras.lista.length)}</b><small>compras</small></div>
+      <div class="stat"><b>${fmt(IMP.compras.clientes)}</b><small>lojistas que compraram</small></div>
+      <div class="stat"><b>${IMP.compras.de ? dataBR(IMP.compras.de) + ' a ' + dataBR(IMP.compras.ate) : '—'}</b><small>período</small></div>
+      ${IMP.compras.semData ? `<div class="stat"><b style="color:var(--bad)">${fmt(IMP.compras.semData)}</b><small>linhas sem data válida (ignoradas)</small></div>` : ''}
+    </div><p class="muted">Compras que já estão na central não duplicam. Depois de gravar, a central recalcula última compra, ciclo e ticket de cada lojista.</p>` : ''}
     <p class="muted">Linhas repetidas na planilha foram unidas no mesmo lojista. Telefones inúteis ficam registrados, mas não entram em disparo.</p>
     <div class="row" style="justify-content:flex-end"><div class="fit"><button class="btn" id="iConfirmar">Confirmar importação</button></div></div>
     <div class="prog" id="iProg" style="display:none"><i></i></div><div class="muted" id="iProgTxt"></div>`;
@@ -652,17 +721,22 @@ async function gravar() {
   const btn = $('#iConfirmar'); btn.disabled = true;
   const p = IMP.plano, prog = $('#iProg'), bar = prog.querySelector('i'), txt = $('#iProgTxt');
   prog.style.display = '';
-  const total = p.lojistas.length + p.telefones.length + p.vinculos.length; let feito = 0;
+  const C = IMP.compras, idsC = C ? [...new Set(C.lista.map(c => c.lojista_id))] : [];
+  const total = p.lojistas.length + p.telefones.length + p.vinculos.length + (C ? C.lista.length + idsC.length : 0) || 1; let feito = 0;
   const passo = (n, msg) => { feito += n; bar.style.width = (feito / total * 100).toFixed(1) + '%'; txt.textContent = msg; };
   try {
     const baseId = await baseDestino($('#iBase').value, $('#iNovaBase').value);
     await gravarPlano(p, baseId, passo);
+    if (C) {
+      for (const c of chunk(C.lista, 1000)) { await q(sb.from('cl_compras').upsert(c, { onConflict: 'chave', ignoreDuplicates: true })); passo(c.length, 'Gravando compras…'); }
+      for (const c of chunk(idsC, 1000)) { await q(sb.rpc('cl_atualizar_metricas', { p_ids: c })); passo(c.length, 'Calculando a rotina de compra…'); }
+    }
     // aprende os nomes de coluna para a próxima importação
     for (const m of IMP.mapa.filter(m => m.campo)) {
       const c = CAMPOS.find(x => x.chave === m.campo), ap = CL.norm(m.coluna);
       if (c && !(c.apelidos || []).map(CL.norm).includes(ap)) { c.apelidos = [...(c.apelidos || []), ap]; await q(sb.from('cl_campos').update({ apelidos: c.apelidos }).eq('chave', c.chave)); }
     }
-    await q(sb.from('cl_importacoes').insert({ tipo: 'base', base_id: baseId, arquivo: IMP.arquivo, mapeamento: IMP.mapa, linhas: p.linhas, novos: p.novos, atualizados: p.atualizados, ignorados: p.ignorados, tel_inuteis: p.telInuteis }));
+    await q(sb.from('cl_importacoes').insert({ tipo: IMP.tipo || 'base', base_id: baseId, arquivo: IMP.arquivo, mapeamento: IMP.mapa, linhas: p.linhas, novos: p.novos, atualizados: p.atualizados, ignorados: p.ignorados, tel_inuteis: p.telInuteis }));
     txt.textContent = 'Concluído.';
     toast(`Importação concluída: <b>${fmt(p.novos)}</b> novos, <b>${fmt(p.atualizados)}</b> completados.`, 'ok');
     resetImport(); histImport(); kpis();
@@ -684,9 +758,9 @@ async function baseDestino(valor, nomeNova) { // devolve o id, criando a base se
 async function histImport() {
   await carregarBases();
   const h = await q(sb.from('cl_importacoes').select('*').order('created_at', { ascending: false }).limit(50));
-  const TIPO = { base: 'Base de clientes', conversas: 'Conversas HyperFlow', disparo: 'Arquivo de disparo' };
+  const TIPO = { base: 'Base de clientes', vendas: 'Vendas', conversas: 'Conversas HyperFlow', disparo: 'Arquivo de disparo' };
   $('#iHist').innerHTML = h.length ? `<table><thead><tr><th>Data</th><th>Tipo</th><th>Arquivo</th><th>Base</th><th class="right">Linhas</th><th class="right">Lojistas novos</th><th class="right">Completados</th><th class="right">Tel. inúteis</th></tr></thead><tbody>
-    ${h.map(i => `<tr><td>${dataBR(i.created_at)}</td><td><span class="tag ${i.tipo === 'base' ? 'acc' : ''}">${TIPO[i.tipo] || i.tipo}</span></td><td>${esc(i.arquivo)}</td><td>${esc((BASES.find(b => b.id === i.base_id) || {}).nome || '—')}</td><td class="right mono">${fmt(i.linhas)}</td><td class="right mono">${fmt(i.novos)}</td><td class="right mono">${fmt(i.atualizados)}</td><td class="right mono">${fmt(i.tel_inuteis)}</td></tr>`).join('')}</tbody></table>`
+    ${h.map(i => `<tr><td>${dataBR(i.created_at)}</td><td><span class="tag ${i.tipo === 'base' ? 'acc' : i.tipo === 'vendas' ? 'ok' : ''}">${TIPO[i.tipo] || i.tipo}</span></td><td>${esc(i.arquivo)}</td><td>${esc((BASES.find(b => b.id === i.base_id) || {}).nome || '—')}</td><td class="right mono">${fmt(i.linhas)}</td><td class="right mono">${fmt(i.novos)}</td><td class="right mono">${fmt(i.atualizados)}</td><td class="right mono">${fmt(i.tel_inuteis)}</td></tr>`).join('')}</tbody></table>`
     : `<div class="empty">Nenhuma importação ainda.</div>`;
 }
 
@@ -911,13 +985,16 @@ async function listar() {
       p_doc: v('#fDoc'), p_tel: v('#fTel'), p_resp: v('#fResp'), p_limite: POR_PAG, p_offset: PAG * POR_PAG }));
     if (meu !== REQ) return; // resposta antiga: uma busca mais nova já foi feita
     const total = L.length ? +L[0].total : 0;
-    $('#fRes').innerHTML = L.length ? `<table><thead><tr><th>Nome</th><th>CPF/CNPJ</th><th>Telefone</th><th>Bases</th><th class="right">Disparos</th><th class="right">Respostas</th><th>Última resposta</th><th>Classificação</th></tr></thead><tbody>
+    $('#fRes').innerHTML = L.length ? `<table><thead><tr><th>Nome</th><th>CPF/CNPJ</th><th>Telefone</th><th>Bases</th><th>Última compra</th><th class="right">Compras</th><th>Carteira</th><th class="right">Disparos</th><th class="right">Respostas</th><th>Classificação</th></tr></thead><tbody>
       ${L.map(l => `<tr class="click" data-id="${l.id}"><td>${esc(l.nome || '—')}</td>
         <td class="mono">${l.documento ? fmtDoc(l.documento, l.tipo_doc) : '<span class="muted">—</span>'}</td>
         <td class="mono">${fmtTel(l.telefone)}</td><td style="font-size:12px">${esc(l.bases || '')}</td>
+        <td>${l.ultima_compra ? `${dataBR(l.ultima_compra)}<br><span class="muted" style="font-size:11.5px">há ${diasDesde(l.ultima_compra)} dias</span>` : '<span class="muted">—</span>'}</td>
+        <td class="right mono">${+l.compras || '<span class="muted">0</span>'}${l.ciclo_dias ? `<br><span class="muted" style="font-size:11.5px">a cada ${l.ciclo_dias}d</span>` : ''}</td>
+        <td style="font-size:12px">${l.carteira ? esc(l.carteira) : (l.ultima_compra ? '<span class="muted">livre</span>' : '')}${l.canal && l.canal !== 'Avacy' ? `<br><span class="muted">${esc(l.canal)}</span>` : ''}</td>
         <td class="right mono">${+l.disparos || '<span class="muted">0</span>'}</td>
         <td class="right mono">${+l.conversas ? `${+l.respostas} <span class="muted">de ${+l.conversas}</span>` : '<span class="muted">—</span>'}</td>
-        <td>${l.ultima_resposta ? dataBR(l.ultima_resposta) : ''}</td><td style="font-size:12px">${esc(l.ultima_classificacao || '')}</td></tr>`).join('')}</tbody></table>`
+        <td style="font-size:12px">${esc(l.ultima_classificacao || '')}</td></tr>`).join('')}</tbody></table>`
       : `<div class="empty">Nenhum lojista com esses filtros.</div>`;
     const ini = total ? PAG * POR_PAG + 1 : 0, fim = Math.min(total, (PAG + 1) * POR_PAG);
     $('#fPag').innerHTML = `<div class="muted">${total ? `${fmt(ini)}–${fmt(fim)} de <b style="color:var(--txt)">${fmt(total)}</b> lojistas` : ''}</div>
@@ -932,9 +1009,33 @@ $('#fBase').onchange = async () => { $('#fRodada').value = ''; PAG = 0; await op
 $('#fBusca').oninput = () => { clearTimeout(buscaT); buscaT = setTimeout(() => { PAG = 0; listar(); }, 450); };
 $('#fBusca').onkeydown = e => { if (e.key === 'Enter') { clearTimeout(buscaT); PAG = 0; listar(); } };
 $('#fLimpar').onclick = async () => { ['#fBusca', '#fBase', '#fDoc', '#fTel', '#fResp'].forEach(s => $(s).value = ''); PAG = 0; await opcoesRodada(); listar(); };
+const diasDesde = d => d ? Math.round((Date.parse(hoje()) - Date.parse(d)) / 864e5) : null;
+const brl = v => v == null ? '' : Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
+function carteiraDe(m) {
+  if (!m || !m.ultima_compra) return null;
+  if (m.canal === 'Martins' || (m.ultimo_vendedor || '').toUpperCase() === 'MARTINS') return null;
+  return diasDesde(m.ultima_compra) < 180 ? m.ultimo_vendedor : null;
+}
+function blocoCompras(l, m, comp) {
+  if (!m) return `<h3>Compras</h3><p class="muted" style="margin:0 0 20px">${l.ultima_compra ? 'Última compra ' + dataBR(l.ultima_compra) + ' (sem histórico de vendas importado).' : 'Nenhuma compra registrada. Lojista em potencial.'}</p>`;
+  const d = diasDesde(m.ultima_compra), cart = carteiraDe(m);
+  const cor = d >= 180 ? 'bad' : d >= 150 ? 'warn' : 'ok';
+  return `<h3>Compras</h3>
+    <div class="stats" style="margin-top:0">
+      <div class="stat"><b>${fmt(m.compras)}</b><small>${m.compras === 1 ? 'compra' : 'compras'} desde ${dataBR(m.primeira_compra).slice(3)}</small></div>
+      <div class="stat"><b><span class="tag ${cor}" style="font-size:13px">${d} dias</span></b><small>desde a última (${dataBR(m.ultima_compra)})</small></div>
+      <div class="stat"><b>${m.ciclo_dias ? m.ciclo_dias + ' dias' : '—'}</b><small>${m.ciclo_dias ? 'costuma comprar a cada' : 'comprou uma vez só'}</small></div>
+      <div class="stat"><b>${brl(m.ticket_medio)}</b><small>ticket médio${m.pares_medio ? ' · ' + m.pares_medio + ' pares' : ''}</small></div>
+    </div>
+    <div class="kv" style="margin-bottom:10px"><div>Carteira</div><div>${cart ? esc(cart) : '<span class="tag acc">Base livre</span>'}${m.canal !== 'Avacy' ? ` <span class="tag">canal ${esc(m.canal)}</span>` : ''}</div><div>Total comprado</div><div>${brl(m.valor_total)}</div></div>
+    <table style="margin-bottom:20px"><tbody>${comp.map(c => `<tr><td>${dataBR(c.data)}</td><td class="right mono">${brl(c.valor)}</td><td class="right mono">${c.pares ?? ''} <span class="muted">pares</span></td><td style="font-size:12px">${esc(c.vendedor || '')}</td></tr>`).join('')}
+      ${m.notas > comp.length ? `<tr><td colspan="4" class="muted" style="font-size:12px">mostrando as ${comp.length} mais recentes de ${fmt(m.notas)} notas</td></tr>` : ''}</tbody></table>`;
+}
 async function abrirLojista(id) {
   const [l] = await q(sb.from('cl_lojistas').select('*').eq('id', id));
   const tels = await q(sb.rpc('cl_telefones_qualidade', { p_lojista: id }));
+  const [met] = await q(sb.from('cl_metricas').select('*').eq('lojista_id', id));
+  const comp = met ? await q(sb.rpc('cl_compras_lojista', { p_lojista: id, p_limite: 12 })) : [];
   const vb = await q(sb.from('cl_lojista_base').select('base_id,rodada,ultimo_disparo').eq('lojista_id', id));
   const it = await q(sb.from('cl_lote_itens').select('telefone,cl_lotes(data,equipe,base_id,origem)').eq('lojista_id', id));
   const nums = tels.map(t => t.numero).filter(Boolean);
@@ -948,6 +1049,7 @@ async function abrirLojista(id) {
   const resp = conv.filter(c => c.respondeu).length;
   $('#drawer').innerHTML = `<button class="close" onclick="$('#drawer').classList.remove('on')">×</button><h2 style="margin-bottom:16px">${esc(l.nome || 'Sem nome')}</h2>
     <div class="kv">${campos.map(([k, v]) => `<div>${k}</div><div>${v}</div>`).join('')}</div>
+    ${blocoCompras(l, met, comp)}
     <h3>Telefones</h3><table><tbody>${tels.map(t => `<tr><td class="mono">${fmtTel(t.numero) || esc(t.numero_original)}${t.principal ? ' <span class="tag acc">principal</span>' : ''}<br><span class="muted" style="font-size:11.5px;font-family:inherit">${+t.conversas ? `respondeu ${+t.respostas} de ${+t.conversas} conversas${t.ultima_resposta ? ' · última ' + dataBR(t.ultima_resposta) : ''}` : 'sem conversas'}</span></td><td class="muted" style="font-size:12px">${t.numero_original && CL.so(t.numero_original) !== t.numero ? 'veio como ' + esc(t.numero_original) : ''}</td><td class="right"><button class="tag ${t.status === 'valido' ? 'ok' : 'bad'}" style="border:0;cursor:pointer" data-t="${t.id}" data-s="${t.status}" title="Clique para alterar">${t.status === 'valido' ? 'útil' : 'inútil'}</button></td></tr>`).join('') || '<tr><td class="muted">Nenhum</td></tr>'}</tbody></table>
     <h3 style="margin-top:20px">Bases</h3><table><tbody>${vb.map(v => `<tr><td>${nb(v.base_id)}</td><td>${v.rodada ? `<span class="tag acc">${v.rodada}x disparado</span>` : '<span class="tag">nunca disparado</span>'}</td><td class="right muted">${v.ultimo_disparo ? 'último ' + dataBR(v.ultimo_disparo) : ''}</td></tr>`).join('')}</tbody></table>
     <h3 style="margin-top:20px">Disparos</h3><table><tbody>${it.filter(x => x.cl_lotes).sort((a, b) => b.cl_lotes.data.localeCompare(a.cl_lotes.data)).map(x => `<tr><td>${dataBR(x.cl_lotes.data)}</td><td>${nb(x.cl_lotes.base_id)}</td><td>${x.cl_lotes.equipe}</td><td class="mono right">${fmtTel(x.telefone)}</td></tr>`).join('') || '<tr><td class="muted">Nenhum disparo</td></tr>'}</tbody></table>
